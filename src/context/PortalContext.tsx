@@ -518,12 +518,14 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user && user.email) {
         try {
-          const q = query(collection(db, "users"), where("email", "==", user.email.toLowerCase()));
-          const snap = await getDocs(q);
-          if (!snap.empty) {
-            const docSnap = snap.docs[0];
+          // Look up the user's profile document directly by their Auth UID
+          const userDocRef = doc(db, "users", user.uid);
+          const docSnap = await getDoc(userDocRef);
+          
+          if (docSnap.exists()) {
             setCurrentUser({ id: docSnap.id, ...docSnap.data() } as CustomerProfile);
           } else if (user.email.toLowerCase() === "lew@desmoproducts.com.au" || user.email.toLowerCase() === "1@1.com") {
+            // Automatically create the admin profile if it doesn't exist yet, using their UID as the document ID
             const adminProfile = {
               email: user.email.toLowerCase(),
               companyName: "Desmo Products HQ",
@@ -532,8 +534,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               customPricing: {},
               allowedProducts: []
             };
-            const docRef = await addDoc(collection(db, "users"), adminProfile);
-            setCurrentUser({ id: docRef.id, ...adminProfile } as CustomerProfile);
+            await setDoc(userDocRef, adminProfile);
+            setCurrentUser({ id: user.uid, ...adminProfile } as CustomerProfile);
           } else {
              setCurrentUser(null);
           }
