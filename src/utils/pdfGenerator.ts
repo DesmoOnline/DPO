@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
-import { Order } from "../types";
+import { Order, CompanySettings } from "../types";
 
-export const generateInvoicePDF = (order: Order): jsPDF => {
+export const generateInvoicePDF = (order: Order, companySettings: CompanySettings): jsPDF => {
   const doc = new jsPDF();
   
   // Header
@@ -11,9 +11,10 @@ export const generateInvoicePDF = (order: Order): jsPDF => {
   
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text("Desmo Products Online", 14, 28);
-  doc.text("Email: lew@desmoproducts.com.au", 14, 33);
-  doc.text("Perth, WA, Australia", 14, 38);
+  doc.text(companySettings.companyName || companySettings.tradingName, 14, 28);
+  doc.text(`ABN: ${companySettings.abn}`, 14, 33);
+  doc.text(`Email: ${companySettings.email}`, 14, 38);
+  doc.text(companySettings.address, 14, 43);
   
   // Invoice details (Right aligned)
   doc.setFont("helvetica", "bold");
@@ -21,6 +22,14 @@ export const generateInvoicePDF = (order: Order): jsPDF => {
   doc.setFont("helvetica", "normal");
   doc.text(`Date: ${new Date(order.createdAt).toLocaleDateString('en-AU')}`, 140, 25);
   doc.text(`Status: ${order.status.toUpperCase().replace('_', ' ')}`, 140, 30);
+  
+  if (companySettings.logoBase64) {
+    try {
+      doc.addImage(companySettings.logoBase64, 'PNG', 140, 35, 30, 15);
+    } catch (e) {
+      console.warn("Failed to attach base64 logo to PDF");
+    }
+  }
   
   // Line separator
   doc.setDrawColor(200, 200, 200);
@@ -81,6 +90,28 @@ export const generateInvoicePDF = (order: Order): jsPDF => {
   doc.text(`Total Amount (AUD):`, 130, y);
   doc.setFont("helvetica", "normal");
   doc.text(`$${order.totalAmount.toFixed(2)}`, 175, y);
+  
+  // Banking Details
+  y += 15;
+  doc.setFont("helvetica", "bold");
+  doc.text("EFT Payment Details:", 14, y);
+  
+  doc.setFont("helvetica", "normal");
+  y += 5;
+  doc.text(`Bank: ${companySettings.bankName}`, 14, y);
+  y += 5;
+  doc.text(`Account Name: ${companySettings.accountName}`, 14, y);
+  y += 5;
+  doc.text(`BSB: ${companySettings.bsb}`, 14, y);
+  y += 5;
+  doc.text(`ACC: ${companySettings.accountNo}`, 14, y);
+  
+  y += 10;
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`* PAYMENT REQUIRED WITHIN ${companySettings.paymentTerms.toUpperCase()}. PLEASE EMAIL REMITTANCE ADVICE TO ${companySettings.email.toUpperCase()}.`, 14, y);
+  doc.setTextColor(0, 0, 0); // Reset color
+  doc.setFontSize(10);
   
   if (order.notes) {
     y += 15;

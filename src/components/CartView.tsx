@@ -23,6 +23,9 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ownTransport, setOwnTransport] = useState(false);
+  const [selectedDeliveryAddress, setSelectedDeliveryAddress] = useState("");
+  const [newDeliveryAddress, setNewDeliveryAddress] = useState("");
+  const [isAddingAddress, setIsAddingAddress] = useState(false);
 
   // Admin on-behalf-of state
   const [orderForMode, setOrderForMode] = useState<"self" | "registered" | "manual">("self");
@@ -138,6 +141,9 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
   };
 
   const canSubmit = () => {
+    if (!isActualAdmin && !ownTransport && !selectedDeliveryAddress && !newDeliveryAddress) return false;
+    if (isActualAdmin && orderForMode === "registered" && !ownTransport && !selectedDeliveryAddress && !newDeliveryAddress) return false;
+    
     if (!isActualAdmin) return true;
     if (orderForMode === "self") return true;
     if (orderForMode === "registered") return !!selectedCustomerId;
@@ -150,7 +156,19 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
     setError(null);
     try {
       const onBehalfOf = getOnBehalfOf();
-      const order = await placeOrder(notes, onBehalfOf, ownTransport);
+      
+      let finalAddress = selectedDeliveryAddress;
+      if (isAddingAddress && newDeliveryAddress.trim()) {
+        finalAddress = newDeliveryAddress.trim();
+        // optionally save it to profile
+        const targetId = isActualAdmin && orderForMode === "registered" ? selectedCustomerId : currentUser?.id;
+        if (targetId) {
+          // Fire and forget add address
+          usePortal().addDeliveryAddress(targetId, finalAddress).catch(console.error);
+        }
+      }
+
+      const order = await placeOrder(notes, onBehalfOf, ownTransport, finalAddress);
       onOrderCompleted(order.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to place wholesale order. Please try again.");
@@ -268,7 +286,13 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
                 id="own_transport_chk"
                 type="checkbox"
                 checked={ownTransport}
-                onChange={(e) => setOwnTransport(e.target.checked)}
+                onChange={(e) => {
+                  setOwnTransport(e.target.checked);
+                  if (e.target.checked) {
+                    setSelectedDeliveryAddress("");
+                    setIsAddingAddress(false);
+                  }
+                }}
                 className="h-4 w-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
               />
               <label htmlFor="own_transport_chk" className="flex items-center gap-2 cursor-pointer select-none">
@@ -277,6 +301,74 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
                 <span className="text-[10px] text-slate-500 font-medium">— Customer will arrange their own pickup / delivery</span>
               </label>
             </div>
+
+            {/* Delivery Address Selector */}
+            {!ownTransport && (
+              <div className="mt-4 bg-white border border-slate-200 rounded-lg p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest font-mono border-b border-slate-100 pb-2">Delivery Address</h4>
+                
+                {!isAddingAddress ? (
+                  <div className="space-y-3">
+                    {effectiveCustomer.deliveryAddresses && effectiveCustomer.deliveryAddresses.length > 0 ? (
+                      <select
+                        value={selectedDeliveryAddress}
+                        onChange={(e) => setSelectedDeliveryAddress(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-250 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                      >
+                        <option value="">Select a saved address...</option>
+                        {effectiveCustomer.deliveryAddresses.map((addr: string, i: number) => (
+                          <option key={i} value={addr}>{addr}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="text-xs text-slate-500 italic">No saved addresses.</p>
+                    )}
+                    
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingAddress(true)}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wide flex items-center gap-1"
+                    >
+                      + Add New Address
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      placeholder="Enter new delivery address..."
+                      value={newDeliveryAddress}
+                      onChange={(e) => setNewDeliveryAddress(e.target.value)}
+                      className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 font-medium"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newDeliveryAddress.trim()) {
+                            setSelectedDeliveryAddress(newDeliveryAddress);
+                          }
+                          setIsAddingAddress(false);
+                        }}
+                        className="bg-blue-600 text-white text-[10px] font-bold uppercase px-3 py-1.5 rounded"
+                      >
+                        Use this address
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingAddress(false);
+                          setNewDeliveryAddress("");
+                        }}
+                        className="bg-slate-200 text-slate-700 text-[10px] font-bold uppercase px-3 py-1.5 rounded"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

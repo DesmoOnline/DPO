@@ -12,18 +12,19 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSuccess, o
   
   const [email, setEmail] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [registered, setRegistered] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !companyName) return;
+    if (!email || !companyName || !deliveryAddress) return;
 
     setIsSubmitting(true);
     setError(null);
     try {
-      await register(email, companyName);
+      await register(email, companyName, deliveryAddress);
       setRegistered(true);
       setTimeout(() => {
         onSuccess();
@@ -89,6 +90,21 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSuccess, o
                 placeholder="E.g., calibration@melbourneservices.com.au"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-white border border-slate-250 rounded-lg p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition font-medium"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="reg_address" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-semibold block">
+                Delivery Address:
+              </label>
+              <input
+                id="reg_address"
+                type="text"
+                required
+                placeholder="E.g., 42 Industrial Rd, Welshpool WA 6106"
+                value={deliveryAddress}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
                 className="w-full bg-white border border-slate-250 rounded-lg p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition font-medium"
               />
             </div>

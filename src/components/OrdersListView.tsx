@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { usePortal } from "../context/PortalContext";
 import { Order } from "../types";
 import { Search, FileText, Truck, Calendar, DollarSign, Filter, ShieldAlert, CheckCircle, XCircle, Ban, Pencil, Package } from "lucide-react";
+import { EditOrderModal } from "./EditOrderModal";
 
 interface OrdersListViewProps {
   onViewInvoice: (orderId: string) => void;
@@ -17,6 +18,9 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
   const [shippingModalOrderId, setShippingModalOrderId] = useState<string | null>(null);
   const [shippingAmount, setShippingAmount] = useState("");
   const [shippingSubmitting, setShippingSubmitting] = useState(false);
+
+  // Edit order modal state
+  const [editModalOrderId, setEditModalOrderId] = useState<string | null>(null);
 
   const filteredOrders = orders.filter(order => {
     // Search filter
@@ -328,11 +332,11 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                             </button>
                           )}
 
-                          {/* Edit - opens the invoice detail for editing */}
+                          {/* Edit - opens the edit order modal */}
                           {order.status !== "cancelled" && order.status !== "shipped" && (
                             <button
                               id={`edit_${order.id}`}
-                              onClick={() => onViewInvoice(order.id)}
+                              onClick={() => setEditModalOrderId(order.id)}
                               className="border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                               title="Edit Order"
                             >
@@ -375,6 +379,14 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
             </table>
           </div>
         </div>
+      )}
+
+      {/* Edit Order Modal */}
+      {editModalOrderId && (
+        <EditOrderModal
+          orderId={editModalOrderId}
+          onClose={() => setEditModalOrderId(null)}
+        />
       )}
     </div>
   );

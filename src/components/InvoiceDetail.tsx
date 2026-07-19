@@ -11,7 +11,7 @@ interface InvoiceDetailProps {
 }
 
 export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, onViewPackingSlip }) => {
-  const { orders, isAdmin, updateOrderStatus, approveOrder, declineOrder } = usePortal();
+  const { orders, isAdmin, updateOrderStatus, approveOrder, declineOrder, companySettings } = usePortal();
   const [isEmailing, setIsEmailing] = React.useState(false);
   const [emailStatus, setEmailStatus] = React.useState<"idle" | "success" | "error">("idle");
   const [emailError, setEmailError] = React.useState<string | null>(null);
@@ -34,7 +34,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
   };
 
   const handleDownloadPDF = () => {
-    const pdf = generateInvoicePDF(order);
+    const pdf = generateInvoicePDF(order, companySettings);
     pdf.save(`invoice_${order.id}.pdf`);
   };
 
@@ -44,7 +44,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
     setEmailError(null);
 
     try {
-      const pdf = generateInvoicePDF(order);
+      const pdf = generateInvoicePDF(order, companySettings);
       // Generate base64 data URL
       const dataUri = pdf.output("datauristring");
       const pdfBase64 = dataUri.split(",")[1];
@@ -56,8 +56,8 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
         },
         body: JSON.stringify({
           to: order.customerEmail,
-          subject: `Invoice from Desmo Products Online - ${order.id}`,
-          body: `Dear customer,\n\nPlease find attached your tax invoice (${order.id}) for your wholesale order with Desmo Products Online.\n\nTotal Amount: $${order.totalAmount.toFixed(2)} AUD\n\nPlease settle payment within 14 days via bank deposit.\n\nThank you,\nDesmo Products HQ`,
+          subject: `Invoice from ${companySettings.tradingName} - ${order.id}`,
+          body: `Dear customer,\n\nPlease find attached your tax invoice (${order.id}) for your wholesale order with ${companySettings.tradingName}.\n\nTotal Amount: $${order.totalAmount.toFixed(2)} AUD\n\nPlease settle payment within ${companySettings.paymentTerms} via bank deposit.\n\nThank you,\n${companySettings.companyName}`,
           pdfBase64,
           filename: `invoice_${order.id}.pdf`
         }),
@@ -187,22 +187,15 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
 
       {/* Order Confirmation Banner */}
       {order.status === "pending_approval" && (
-        <div className="bg-amber-50 border border-amber-250 p-6 rounded-xl space-y-2 text-slate-800 text-xs font-mono shadow-sm print:hidden">
-          <div className="flex items-center gap-2.5 font-bold text-amber-900 uppercase">
-            <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 animate-spin" style={{ animationDuration: '3s' }} />
-            <span>Order Submitted Successfully & Awaiting Review</span>
-          </div>
-          <p className="text-[11px] leading-relaxed font-sans normal-case text-slate-650 pl-7 font-medium">
-            Thank you for your wholesale request. Your order reference <strong>{order.id}</strong> has been logged. 
-            {!order.ownTransport ? (
-              <span className="font-bold text-amber-800"> Shipping costs will be calculated and added to this Invoice within 24 hours. </span>
-            ) : (
-              <span> Since we are not taking payments online, Lew will review this request shortly. </span>
-            )}
-            Once confirmed, you will receive an approved invoice with NAB bank deposit instructions to settle your account.
+      <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3 shadow-sm mb-6" id="invoice_pending_banner">
+        <Clock className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div>
+          <h4 className="text-sm font-bold text-slate-900 tracking-tight">Order Submitted Successfully & Awaiting Review</h4>
+          <p className="text-xs text-slate-700 leading-relaxed font-medium mt-1">
+            {companySettings.orderPendingMessage}
           </p>
         </div>
-      )}
+      </div>)}
 
       {order.status === "approved" && (
         <div className="bg-emerald-50 border border-emerald-250 p-6 rounded-xl space-y-2 text-slate-800 text-xs font-mono shadow-sm print:hidden">
@@ -219,46 +212,46 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
       {/* Invoice Area */}
       <div className="bg-white border border-slate-200 p-6 md:p-10 rounded-xl shadow-sm space-y-8 print:p-0 print:border-none print:shadow-none" id="printable_invoice_canvas">
         {/* Invoice Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b border-slate-200 pb-8">
-          <div className="space-y-3">
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">TAX INVOICE</h1>
-            <div className="flex flex-wrap gap-2 items-center text-xs text-slate-500 font-mono font-semibold uppercase">
-              <span>Invoice No: <strong className="text-slate-800 font-bold">{order.id}</strong></span>
-              <span>•</span>
-              <span>Issued: <strong className="text-slate-750 font-bold">{new Date(order.createdAt).toLocaleDateString('en-AU')}</strong></span>
-            </div>
-            <div className={`inline-flex px-3 py-1 font-mono font-semibold uppercase tracking-wider text-[10px] ${getStatusColor(order.status)}`}>
-              {getStatusLabel(order.status)}
-            </div>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-200 pb-6 gap-6">
+          <div className="space-y-1">
+            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight uppercase">TAX INVOICE</h1>
+            <p className="text-slate-500 font-mono text-xs font-semibold">REF: <span className="text-slate-800">{order.id}</span></p>
           </div>
-
-          <div className="text-left sm:text-right space-y-1 text-xs font-mono text-slate-600 font-semibold uppercase">
-            <h2 className="font-bold text-slate-800 text-sm tracking-tight">Desmo Products Pty Ltd</h2>
-            <p className="text-slate-500">ABN: 84 928 102 344</p>
-            <p className="text-slate-500">18 Testing Rd, Perth</p>
-            <p className="text-slate-500">Perth, WA, 6000</p>
-            <p className="text-blue-600 font-bold">lew@desmoproducts.com.au</p>
+          
+          <div className="text-left md:text-right flex flex-col md:items-end w-full md:w-auto">
+            {companySettings.logoBase64 && (
+              <img src={companySettings.logoBase64} alt="Company Logo" className="h-12 object-contain mb-2" />
+            )}
+            <h2 className="font-bold text-slate-800 text-sm tracking-tight">{companySettings.companyName || companySettings.tradingName}</h2>
+            <div className="text-xs text-slate-500 space-y-0.5 mt-1">
+              <p>ABN: {companySettings.abn}</p>
+              <p>{companySettings.address}</p>
+              <p>Email: {companySettings.email}</p>
+            </div>
           </div>
         </div>
 
         {/* Customer & Billing information */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 text-xs border-b border-slate-200 pb-8 uppercase font-mono font-semibold">
           <div>
-            <h3 className="text-slate-400 font-mono uppercase tracking-widest font-bold mb-2">Billed To (Customer):</h3>
-            <div className="space-y-1 text-slate-700">
-              <p className="text-sm font-bold text-slate-900">{order.companyName}</p>
-              <p className="text-slate-500">Email: {order.customerEmail}</p>
-              <p className="text-slate-500">Customer ID: {order.customerId}</p>
-            </div>
+            <h3 className="text-[10px] font-mono text-slate-400 font-bold tracking-widest uppercase mb-1">Billed To</h3>
+            <p className="text-sm font-bold text-slate-800">{order.companyName}</p>
+            <p className="text-xs text-slate-600 mt-1">{order.customerEmail}</p>
           </div>
 
-          <div>
-            <h3 className="text-slate-400 font-mono uppercase tracking-widest font-bold mb-2">Payment Terms:</h3>
-            <div className="space-y-1 text-slate-700">
-              <p>Due Date: <strong className="text-slate-900">Net 14 Days</strong> from issue</p>
-              <p>Payment Method: <strong className="text-slate-900">Direct Bank Deposit / Transfer</strong></p>
+          {(order.deliveryAddress || order.ownTransport) && (
+            <div>
+              <h3 className="text-[10px] font-mono text-slate-400 font-bold tracking-widest uppercase mb-1">Delivery</h3>
+              {order.ownTransport ? (
+                <p className="text-xs text-slate-600 mt-1 italic font-medium flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5 text-teal-600" />
+                  Own Transport / Pickup
+                </p>
+              ) : (
+                <p className="text-xs text-slate-600 mt-1">{order.deliveryAddress}</p>
+              )}
             </div>
-          </div>
+          )}
         </div>
 
         {/* Invoice Items Table */}
@@ -300,20 +293,16 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
         {/* Totals Box and Payment Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
           {/* Bank Instructions */}
-          <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 space-y-3 text-xs leading-relaxed font-semibold uppercase">
-            <h4 className="font-bold text-slate-800 uppercase tracking-widest font-mono flex items-center gap-1.5">
-              <CreditCard className="w-4 h-4 text-blue-600" />
-              Direct Deposit Instructions
-            </h4>
-            <div className="space-y-1 font-mono text-slate-750">
-              <p>Bank: <strong className="text-slate-900 font-bold">National Australia Bank (NAB)</strong></p>
-              <p>BSB Code: <strong className="text-slate-900 font-bold">082-124</strong></p>
-              <p>Account No: <strong className="text-slate-900 font-bold">842-104-921</strong></p>
-              <p>Account Name: <strong className="text-slate-900 font-bold">Desmo Products Wholesale</strong></p>
-              <p>Payment Reference: <strong className="text-blue-650 font-bold">{order.id}</strong></p>
+          <div className="border border-slate-200 p-4 rounded-xl bg-slate-50 w-full md:w-auto shadow-sm">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest font-mono mb-2 border-b border-slate-200 pb-2">EFT Payment Details</h4>
+            <div className="space-y-1 text-[11px] font-mono">
+              <p>Bank: <strong className="text-slate-900">{companySettings.bankName}</strong></p>
+              <p>Account Name: <strong className="text-slate-900 font-bold">{companySettings.accountName}</strong></p>
+              <p>BSB: <strong className="text-slate-900">{companySettings.bsb}</strong></p>
+              <p>Account Number: <strong className="text-slate-900">{companySettings.accountNo}</strong></p>
             </div>
-            <p className="text-[10px] text-slate-400 italic font-mono pt-1 leading-normal font-medium">
-              * PAYMENT REQUIRED WITHIN 14 DAYS. PLEASE EMAIL REMITTANCE ADVICE TO LEW@DESMOPRODUCTS.COM.AU.
+            <p className="text-[10px] text-slate-400 italic font-mono pt-1 leading-normal font-medium mt-2 border-t border-slate-200">
+              * PAYMENT REQUIRED WITHIN {companySettings.paymentTerms.toUpperCase()}. PLEASE EMAIL REMITTANCE ADVICE TO {companySettings.email.toUpperCase()}.
             </p>
           </div>
 
@@ -349,12 +338,12 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
         )}
 
         {/* Secure seal */}
-        <div className="border-t border-slate-200 pt-6 flex justify-between items-center text-[10px] text-slate-400 font-mono font-semibold uppercase">
+        <div className="border-t border-slate-200 pt-6 flex justify-between items-center text-[10px] text-slate-400 font-mono uppercase tracking-widest font-semibold mt-4">
           <span className="flex items-center gap-1">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
             AUTHENTICATED WHOLESALE DOCUMENT
           </span>
-          <span>Desmo Products Pty Ltd</span>
+          <span>{companySettings.companyName || companySettings.tradingName}</span>
         </div>
       </div>
 

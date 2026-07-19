@@ -11,7 +11,9 @@ import {
   Copy,
   Plus,
   Trash2,
-  Download
+  Download,
+  Building,
+  Upload
 } from "lucide-react";
 
 export const AdminDashboard: React.FC = () => {
@@ -28,10 +30,17 @@ export const AdminDashboard: React.FC = () => {
     deleteProduct,
     categories,
     addCategory,
-    deleteCategory
+    deleteCategory,
+    companySettings,
+    updateCompanySettings
   } = usePortal();
 
-  const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products">("accounting");
+  const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products" | "company">("accounting");
+
+  // Company Settings State
+  const [csForm, setCsForm] = useState({ ...companySettings });
+  const [isSavingCompanySettings, setIsSavingCompanySettings] = useState(false);
+  const [companySettingsSaved, setCompanySettingsSaved] = useState(false);
 
   // Filter ranges for tax data
   const [dateRange, setDateRange] = useState<"30days" | "3months" | "fy">("fy");
@@ -52,6 +61,7 @@ export const AdminDashboard: React.FC = () => {
   const [newProdAllowBackorders, setNewProdAllowBackorders] = useState(true);
   const [newProdAutoApprove, setNewProdAutoApprove] = useState(false);
   
+  const [newProdQbQty, setNewProdQbQty] = useState(10);
   const [newProdQbValueType, setNewProdQbValueType] = useState<"percentage" | "fixed">("percentage");
   const [newProdQbValue, setNewProdQbValue] = useState(5);
   const [newProdQtyBreaks, setNewProdQtyBreaks] = useState<QuantityBreak[]>([]);
@@ -334,17 +344,21 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Segment Selector tabs */}
       <div className="flex items-center gap-2 overflow-x-auto max-w-full py-1 border-b border-slate-100 pb-4" id="admin_tab_selector">
-        {(["accounting", "customers", "products"] as const).map((tab) => {
+        {(["accounting", "company", "customers", "products"] as const).map((tab) => {
           const label = tab === "accounting" 
             ? "Bookkeeping & GST" 
-            : tab === "customers" 
-              ? `Customers (${customers.filter(c => c.email !== "lew@desmoproducts.com.au").length})` 
-              : "Products";
+            : tab === "company"
+              ? "Company Details"
+              : tab === "customers" 
+                ? `Customers (${customers.filter(c => c.email !== "lew@desmoproducts.com.au").length})` 
+                : "Products";
           const icon = tab === "accounting" 
             ? <TrendingUp className="w-4 h-4" /> 
-            : tab === "customers" 
-              ? <Users className="w-4 h-4" /> 
-              : <Wrench className="w-4 h-4" />;
+            : tab === "company"
+              ? <Building className="w-4 h-4" />
+              : tab === "customers" 
+                ? <Users className="w-4 h-4" /> 
+                : <Wrench className="w-4 h-4" />;
           return (
             <button
               key={tab}
@@ -546,6 +560,174 @@ export const AdminDashboard: React.FC = () => {
               )}
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Tab Content: Company Details */}
+      {activeSubTab === "company" && (
+        <div className="bg-white p-8 border border-slate-200 rounded-xl shadow-sm space-y-6" id="company_settings_panel">
+          <div className="flex justify-between items-start border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 tracking-tight">Corporate Identity & Settings</h3>
+              <p className="text-xs text-slate-500 uppercase font-mono mt-1">Configure invoice branding, bank details, and notification defaults.</p>
+            </div>
+            <button
+              onClick={async () => {
+                setIsSavingCompanySettings(true);
+                try {
+                  await updateCompanySettings(csForm);
+                  setCompanySettingsSaved(true);
+                  setTimeout(() => setCompanySettingsSaved(false), 3000);
+                } finally {
+                  setIsSavingCompanySettings(false);
+                }
+              }}
+              disabled={isSavingCompanySettings}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase px-6 py-2.5 rounded-lg shadow-sm transition flex items-center gap-2"
+            >
+              {isSavingCompanySettings ? "Saving..." : companySettingsSaved ? <><Check className="w-4 h-4"/> Saved</> : "Save Settings"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <h4 className="text-sm font-bold text-slate-800 uppercase font-mono mb-4 text-blue-600">Company Information</h4>
+              
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Trading Name</label>
+                <input
+                  type="text"
+                  value={csForm.tradingName}
+                  onChange={(e) => setCsForm(prev => ({ ...prev, tradingName: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+              
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Legal Company Name</label>
+                <input
+                  type="text"
+                  value={csForm.companyName}
+                  onChange={(e) => setCsForm(prev => ({ ...prev, companyName: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">ABN</label>
+                <input
+                  type="text"
+                  value={csForm.abn}
+                  onChange={(e) => setCsForm(prev => ({ ...prev, abn: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Address</label>
+                <input
+                  type="text"
+                  value={csForm.address}
+                  onChange={(e) => setCsForm(prev => ({ ...prev, address: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Contact Email</label>
+                <input
+                  type="email"
+                  value={csForm.email}
+                  onChange={(e) => setCsForm(prev => ({ ...prev, email: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Company Logo (Base64/URL)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={csForm.logoBase64 || ""}
+                    onChange={(e) => setCsForm(prev => ({ ...prev, logoBase64: e.target.value }))}
+                    placeholder="data:image/png;base64,... or https://"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                  />
+                  {csForm.logoBase64 && (
+                    <div className="w-10 h-10 border border-slate-200 rounded-lg overflow-hidden flex-shrink-0 bg-white flex items-center justify-center">
+                      <img src={csForm.logoBase64} alt="Logo preview" className="max-w-full max-h-full object-contain p-1" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="text-sm font-bold text-slate-800 uppercase font-mono mb-4 text-emerald-600">Banking & Terms</h4>
+              
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Payment Terms</label>
+                <input
+                  type="text"
+                  value={csForm.paymentTerms}
+                  onChange={(e) => setCsForm(prev => ({ ...prev, paymentTerms: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Bank Name</label>
+                <input
+                  type="text"
+                  value={csForm.bankName}
+                  onChange={(e) => setCsForm(prev => ({ ...prev, bankName: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="flex gap-4">
+                <div className="space-y-1.5 flex-1">
+                  <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">BSB Number</label>
+                  <input
+                    type="text"
+                    value={csForm.bsb}
+                    onChange={(e) => setCsForm(prev => ({ ...prev, bsb: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5 flex-1">
+                  <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Account Number</label>
+                  <input
+                    type="text"
+                    value={csForm.accountNo}
+                    onChange={(e) => setCsForm(prev => ({ ...prev, accountNo: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Account Name</label>
+                <input
+                  type="text"
+                  value={csForm.accountName}
+                  onChange={(e) => setCsForm(prev => ({ ...prev, accountName: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <h4 className="text-sm font-bold text-slate-800 uppercase font-mono mb-4 text-purple-600 pt-4 border-t border-slate-100">Customer Messaging</h4>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Pending Order Notification Message</label>
+                <textarea
+                  value={csForm.orderPendingMessage}
+                  onChange={(e) => setCsForm(prev => ({ ...prev, orderPendingMessage: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none min-h-[100px]"
+                />
+                <p className="text-[10px] text-slate-400">This message is displayed to customers immediately after they submit a new wholesale order.</p>
+              </div>
+            </div>
           </div>
         </div>
       )}
