@@ -104,6 +104,74 @@
         }
       },
       "required": ["customerId", "customerEmail", "companyName", "items", "subtotal", "gstAmount", "totalAmount", "status", "createdAt"]
+    },
+    "RateBreakProfile": {
+      "title": "RateBreakProfile",
+      "description": "Reusable pricing template with per-product quantity breaks assigned to customers",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Profile name e.g. 'Wholesale Partner'"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of this pricing tier"
+        },
+        "productBreaks": {
+          "type": "object",
+          "description": "Map of productId to array of QuantityBreak objects"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this profile was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this profile was last updated"
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "Admin user ID who created this profile"
+        }
+      },
+      "required": ["name", "productBreaks", "createdAt", "updatedAt", "createdBy"]
+    },
+    "WeightBreakTemplate": {
+      "title": "WeightBreakTemplate",
+      "description": "Quantity-based pricing tier that can be assigned to customers (max 10 per system)",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Template name e.g. 'Tier 1 - Starter'"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of this weight break"
+        },
+        "quantityBreaks": {
+          "type": "array",
+          "description": "Array of QuantityBreak objects for this tier"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this template was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this template was last updated"
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "Admin user ID who created this template"
+        }
+      },
+      "required": ["name", "quantityBreaks", "createdAt", "updatedAt", "createdBy"]
     }
   },
   "firestore": {
@@ -114,6 +182,14 @@
     "/products/{productId}": {
       "schema": "Product",
       "description": "Wholesale catalog items"
+    },
+    "/rateBreakProfiles/{profileId}": {
+      "schema": "RateBreakProfile",
+      "description": "Reusable pricing templates with quantity breaks"
+    },
+    "/weightBreakTemplates/{templateId}": {
+      "schema": "WeightBreakTemplate",
+      "description": "Quantity-based pricing tiers assignable to customers (max 10)"
     },
     "/orders/{orderId}": {
       "schema": "Order",

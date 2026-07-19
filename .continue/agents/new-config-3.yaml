@@ -1,0 +1,13 @@
+version: 1.0.0
+schema: v1
+
+models:
+  - title: "Gemma 4:12b"
+    provider: ollama
+    model: gemma4:12b
+    apiBase: http://localhost:11434
+
+tabAutocompleteModel:
+  provider: ollama
+  model: qwen3.5:9b
+  apiBase: http://localhost:11434

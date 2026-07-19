@@ -5,6 +5,53 @@ export interface QuantityBreak {
   discountPercent?: number; // legacy backwards-compatibility
 }
 
+export type DocumentType = "QUOTE" | "INVOICE" | "PACKING_SLIP";
+
+export type DocumentStatus =
+  | "draft_quote"
+  | "quote_requested"
+  | "quote_finalized"
+  | "pending_approval"
+  | "approved"
+  | "declined"
+  | "paid"
+  | "shipped"
+  | "cancelled";
+
+// Weight Break Template: Reusable quantity-based pricing tier (up to 10 per system)
+export interface WeightBreakTemplate {
+  id: string;             // e.g. "wbt-1", "wbt-2", etc
+  name: string;           // e.g. "Tier 1 - Starter", "Tier 2 - Professional"
+  description?: string;   // e.g. "Small volume orders"
+  quantityBreaks: QuantityBreak[]; // Quantity tiers for this weight break
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}
+
+// Rate Break Profile: Reusable pricing template assigned to customers
+export interface RateBreakProfile {
+  id: string;             // e.g. "rbp-wholesale"
+  name: string;           // e.g. "Wholesale Partner"
+  description?: string;   // e.g. "Standard wholesale pricing"
+  productBreaks: {        // per-product quantity breaks for this profile
+    [productId: string]: QuantityBreak[];
+  };
+  createdAt: string;      // ISO timestamp
+  updatedAt: string;      // ISO timestamp
+  createdBy: string;      // Admin user ID who created this
+}
+
+// A named pricing tier with product-specific quantity break schedules
+export interface PricingTier {
+  id: string;             // e.g. "tier-vip"
+  name: string;           // e.g. "VIP Dealer"
+  description?: string;   // e.g. "Top 10 dealers get better rates"
+  productBreaks: {        // per-product break overrides for this tier
+    [productId: string]: QuantityBreak[];
+  };
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -28,9 +75,12 @@ export interface CustomerProfile {
   status: "pending" | "approved" | "rejected";
   createdAt: string;
   approvedAt?: string;
-  customPricing?: { [productId: string]: number }; // Custom pricing overrides for specific products
+  customPricing?: { [productId: string]: number }; // Custom flat price overrides per product
   allowedProducts?: string[]; // If a product is restricted, customer must have it here to see/order
   deliveryAddresses?: string[]; // Multiple delivery addresses for the customer
+  pricingTierId?: string; // ID of a PricingTier assigned to this customer
+  rateBreakProfileId?: string; // ID of RateBreakProfile assigned to this customer
+  weightBreakAssignments?: { [productId: string]: string[] }; // Map of productId -> array of WeightBreakTemplate IDs
 }
 
 export interface OrderItem {
@@ -50,15 +100,17 @@ export interface Order {
   customerId: string;
   customerEmail: string;
   companyName: string;
+  documentType?: DocumentType;
   items: OrderItem[];
   subtotal: number;
   gstAmount: number; // 10% in Australia
   totalAmount: number;
-  status: "pending_approval" | "approved" | "declined" | "paid" | "shipped" | "cancelled";
+  status: DocumentStatus;
   createdAt: string;
   paidAt?: string;
   shippedAt?: string;
   notes?: string;
+  quoteMessage?: string;
   ownTransport?: boolean;
   shippingCharge?: number;
   deliveryAddress?: string; // The selected delivery address for this specific order

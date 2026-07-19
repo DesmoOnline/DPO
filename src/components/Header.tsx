@@ -10,16 +10,20 @@ import {
   Database, 
   AlertCircle,
   HelpCircle,
-  Clock
+  Clock,
+  Search
 } from "lucide-react";
 
 interface HeaderProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   onOpenProductDetail: (prodId: string | null) => void;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  onSearchSubmit: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenProductDetail }) => {
+export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenProductDetail, searchQuery, onSearchQueryChange, onSearchSubmit }) => {
   const { 
     currentUser, 
     isAdmin, 
@@ -128,7 +132,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
               }`}
             >
               <FileText className="w-4 h-4" />
-              {isAdmin ? "Orders & Invoices" : "My Invoices"}
+              {isAdmin ? "Orders & Invoices" : "My Quotes & Invoices"}
             </button>
 
             {isAdmin && (
@@ -146,6 +150,29 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
               </button>
             )}
           </nav>
+        )}
+
+        {currentUser && (
+          <form
+            className="w-full md:w-[140px] lg:w-[160px] shrink-0"
+            onSubmit={(e) => {
+              e.preventDefault();
+              onSearchSubmit();
+            }}
+          >
+            <label className="sr-only" htmlFor="header_ledger_search">Search Quotes and Invoices</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <input
+                id="header_ledger_search"
+                type="search"
+                value={searchQuery}
+                onChange={(e) => onSearchQueryChange(e.target.value)}
+                placeholder="Search quotes & invoices..."
+                className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-2 py-2 text-xs font-medium text-slate-800 shadow-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          </form>
         )}
 
         {/* Login status */}

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Product, CustomerProfile, Order, OrderItem, QuantityBreak, CompanySettings } from "../types";
+import { Product, CustomerProfile, Order, OrderItem, QuantityBreak, CompanySettings, PricingTier, DocumentType } from "../types";
 import { isFirebaseAvailable, db, auth } from "../firebase";
 import { 
   collection, 
@@ -9,6 +9,7 @@ import {
   setDoc, 
   addDoc, 
   updateDoc, 
+  deleteDoc,
   query, 
   where, 
   onSnapshot,
@@ -75,7 +76,7 @@ interface PortalContextType {
   clearCart: () => void;
   
   // Ordering
-  placeOrder: (notes?: string, onBehalfOf?: { customerId: string; customerEmail: string; companyName: string; customPricing?: { [productId: string]: number } }, ownTransport?: boolean, deliveryAddress?: string) => Promise<Order>;
+  placeOrder: (notes?: string, onBehalfOf?: { customerId: string; customerEmail: string; companyName: string; customPricing?: { [productId: string]: number } }, ownTransport?: boolean, deliveryAddress?: string, documentMode?: DocumentType) => Promise<Order>;
   editOrder: (orderId: string, updatedItems: OrderItem[], deliveryAddress?: string) => Promise<void>;
   
   // Admin actions
@@ -94,11 +95,19 @@ interface PortalContextType {
   updateOrderDispatch: (orderId: string, dispatch: { freightCompany: string; consignmentNote: string; packingStatus: "Packed" | "Hold" }) => Promise<void>;
   approveOrder: (orderId: string) => Promise<void>;
   declineOrder: (orderId: string) => Promise<void>;
+  deleteOrder: (orderId: string) => Promise<void>;
   addShippingCharge: (orderId: string, shippingCharge: number) => Promise<void>;
   
   // Settings
   companySettings: CompanySettings;
   updateCompanySettings: (settings: CompanySettings) => Promise<void>;
+
+  // Pricing Tiers
+  pricingTiers: PricingTier[];
+  createPricingTier: (tier: Omit<PricingTier, "id">) => Promise<void>;
+  updatePricingTier: (tierId: string, tier: Partial<PricingTier>) => Promise<void>;
+  deletePricingTier: (tierId: string) => Promise<void>;
+  assignPricingTier: (customerId: string, tierId: string | null) => Promise<void>;
 
   // System overrides for testing
   setPortalMode: (isFirebaseMode: boolean) => void;
@@ -122,9 +131,6 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
-  tradingName: "Desmo Products Wholesale",
-  companyName: "Desmo Products Pty Ltd",
-  abn: "98 123 456 789",
   address: "123 Industrial Way, Perth WA 6000",
   email: "lew@desmoproducts.com.au",
   paymentTerms: "14 Days",
@@ -465,6 +471,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [customers, setCustomers] = useState<CustomerProfile[]>(DEFAULT_CUSTOMERS);
   const [orders, setOrders] = useState<Order[]>(DEFAULT_ORDERS);
   const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
+  const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
   const [cart, setCart] = useState<{ product: Product; qty: number; selectedColors?: string[] }[]>([]);
   const [adminViewMode, setAdminViewMode] = useState<"admin" | "customer">("admin");
 
@@ -530,7 +537,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       snapshot.forEach((doc) => {
         items.push({ id: doc.id, ...doc.data() } as Product);
       });
-      if (items.length > 0) setProducts(items);
+      setProducts(items);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, "products");
     });
@@ -586,10 +593,23 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
     }
 
+    // Load pricing tiers (available to all signed-in users)
+    let unsubTiers = () => {};
+    if (currentUser) {
+      unsubTiers = onSnapshot(collection(db, "pricingTiers"), (snapshot) => {
+        const items: PricingTier[] = [];
+        snapshot.forEach((d) => {
+          items.push({ id: d.id, ...d.data() } as PricingTier);
+        });
+        setPricingTiers(items);
+      }, () => { /* silent fail – rules may block non-admins */ });
+    }
+
     return () => {
       unsubProducts();
       unsubCustomers();
       unsubOrders();
+      unsubTiers();
     };
   }, [isFirebase, currentUser?.id, isAdmin]);
 
@@ -763,7 +783,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     notes?: string, 
     onBehalfOf?: { customerId: string; customerEmail: string; companyName: string; customPricing?: { [productId: string]: number } },
     ownTransport?: boolean,
-    deliveryAddress?: string
+    deliveryAddress?: string,
+    documentMode: DocumentType = "INVOICE"
   ): Promise<Order> => {
     if (!currentUser) throw new Error("Authentication required to place orders");
     // Admins can place on behalf of others; regular users must be approved
@@ -829,11 +850,13 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const gstAmount = Number((subtotal * 0.10).toFixed(2)); // standard 10% GST in Australia
     const totalAmount = Number((subtotal + gstAmount).toFixed(2));
 
-    const nextInvoiceNumber = `INV-${Math.floor(1000 + Math.random() * 9000)}`;
+    const nextInvoiceNumber = `${documentMode === "QUOTE" ? "QTE" : "INV"}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const allAutoApproved = cart.every(item => item.product.autoApprove === true);
     let initialStatus: Order["status"] = allAutoApproved ? "approved" : "pending_approval";
-    if (!ownTransport) {
+    if (documentMode === "QUOTE") {
+      initialStatus = "quote_requested";
+    } else if (!ownTransport) {
       initialStatus = "pending_approval";
     }
 
@@ -842,6 +865,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       customerId: effectiveCustomer.customerId,
       customerEmail: effectiveCustomer.customerEmail,
       companyName: effectiveCustomer.companyName,
+      documentType: documentMode,
       items: orderItems,
       subtotal,
       gstAmount,
@@ -849,6 +873,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       status: initialStatus,
       createdAt: new Date().toISOString(),
       ...(notes ? { notes } : {}),
+      ...(documentMode === "QUOTE" ? { quoteMessage: notes || "This quote excludes shipping until finalized by Desmo Products." } : {}),
       ...(ownTransport !== undefined ? { ownTransport } : {}),
       ...(deliveryAddress ? { deliveryAddress } : {})
     };
@@ -864,7 +889,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setOrders(prev => [newOrder, ...prev]);
     }
 
-    if (initialStatus === "approved") {
+    if (initialStatus === "approved" && documentMode !== "QUOTE") {
       try {
         const pdf = generateInvoicePDF(newOrder);
         const dataUri = pdf.output("datauristring");
@@ -1075,7 +1100,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await updateDoc(doc(db, "products", productId), updatedFields as any);
+        const productRef = doc(db, "products", productId);
+        await setDoc(productRef, updatedFields as any, { merge: true });
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `products/${productId}`);
       }
@@ -1086,19 +1112,36 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const deleteProduct = async (productId: string) => {
     if (!isActualAdmin) return;
+    
+    // Optimistically update UI
+    setProducts(prev => {
+      const next = prev.filter(p => p.id !== productId);
+      return next;
+    });
+    setCart(prev => prev.filter(item => item.product.id !== productId));
+    
     if (isFirebase && isFirebaseAvailable) {
       try {
         await deleteDoc(doc(db, "products", productId));
       } catch (error) {
+        // Revert on error
+        console.error("Delete failed, reverting:", error);
         handleFirestoreError(error, OperationType.DELETE, `products/${productId}`);
+        // Re-fetch products to restore state
+        try {
+          const productsCollection = collection(db, "products");
+          const docs = await getDocs(productsCollection);
+          const loaded: Product[] = docs.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Product[];
+          setProducts(loaded);
+        } catch (e) {
+          console.error("Failed to restore products after delete error:", e);
+        }
       }
     } else {
-      setProducts(prev => {
-        const next = prev.filter(p => p.id !== productId);
-        localStorage.setItem("dp_sandbox_products", JSON.stringify(next));
-        return next;
-      });
-      setCart(prev => prev.filter(item => item.product.id !== productId));
+      localStorage.setItem("dp_sandbox_products", JSON.stringify(products.filter(p => p.id !== productId)));
     }
   };
 
@@ -1156,12 +1199,21 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const approveOrder = async (orderId: string) => {
-    if (!isAdmin && isFirebase) return;
-
     const orderToApprove = orders.find(o => o.id === orderId);
     if (!orderToApprove) return;
 
-    const updates: Partial<Order> = { status: "approved" };
+    const canApprove = isAdmin || (
+      currentUser &&
+      orderToApprove.customerId === currentUser.id &&
+      orderToApprove.documentType === "QUOTE" &&
+      orderToApprove.status === "quote_finalized"
+    );
+    if (!canApprove && isFirebase) return;
+
+    const updates: Partial<Order> = { status: "approved", approvedAt: new Date().toISOString() };
+    if (orderToApprove.documentType === "QUOTE") {
+      updates.quoteMessage = undefined;
+    }
 
     if (isFirebase && isFirebaseAvailable) {
       try {
@@ -1194,7 +1246,15 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const declineOrder = async (orderId: string) => {
-    if (!isAdmin && isFirebase) return;
+    const orderToDecline = orders.find(o => o.id === orderId);
+    if (!orderToDecline) return;
+    const canDecline = isAdmin || (
+      currentUser &&
+      orderToDecline.customerId === currentUser.id &&
+      orderToDecline.documentType === "QUOTE" &&
+      orderToDecline.status === "quote_finalized"
+    );
+    if (!canDecline && isFirebase) return;
     const updates: Partial<Order> = { status: "declined" };
 
     if (isFirebase && isFirebaseAvailable) {
@@ -1206,6 +1266,23 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } else {
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
     }
+  };
+
+  const deleteOrder = async (orderId: string) => {
+    if (!isActualAdmin) return;
+
+    const orderToDelete = orders.find(o => o.id === orderId);
+    if (!orderToDelete) return;
+
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await deleteDoc(doc(db, "orders", orderId));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `orders/${orderId}`);
+      }
+    }
+
+    setOrders(prev => prev.filter(o => o.id !== orderId));
   };
 
   const addShippingCharge = async (orderId: string, shippingCharge: number) => {
@@ -1222,7 +1299,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       shippingCharge,
       subtotal: newSubtotal,
       gstAmount: newGst,
-      totalAmount: newTotal
+      totalAmount: newTotal,
+      ...(orderToUpdate.documentType === "QUOTE" ? { status: "quote_finalized" as Order["status"] } : {})
     };
 
     if (isFirebase && isFirebaseAvailable) {
@@ -1249,6 +1327,60 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCompanySettings(settings);
       localStorage.setItem("dp_sandbox_company_settings", JSON.stringify(settings));
     }
+  };
+
+  // ── Pricing Tier CRUD ────────────────────────────────────────────────────
+  const createPricingTier = async (tier: Omit<PricingTier, "id">) => {
+    if (!isAdmin) return;
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        const docRef = await addDoc(collection(db, "pricingTiers"), tier);
+        setPricingTiers(prev => [...prev, { id: docRef.id, ...tier }]);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, "pricingTiers");
+      }
+    } else {
+      const newTier = { id: `tier-${Date.now()}`, ...tier };
+      setPricingTiers(prev => [...prev, newTier]);
+    }
+  };
+
+  const updatePricingTier = async (tierId: string, updates: Partial<PricingTier>) => {
+    if (!isAdmin) return;
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await updateDoc(doc(db, "pricingTiers", tierId), updates);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `pricingTiers/${tierId}`);
+      }
+    }
+    setPricingTiers(prev => prev.map(t => t.id === tierId ? { ...t, ...updates } : t));
+  };
+
+  const deletePricingTier = async (tierId: string) => {
+    if (!isAdmin) return;
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        const { deleteDoc } = await import("firebase/firestore");
+        await deleteDoc(doc(db, "pricingTiers", tierId));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `pricingTiers/${tierId}`);
+      }
+    }
+    setPricingTiers(prev => prev.filter(t => t.id !== tierId));
+  };
+
+  const assignPricingTier = async (customerId: string, tierId: string | null) => {
+    if (!isAdmin) return;
+    const updates = { pricingTierId: tierId ?? null };
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await updateDoc(doc(db, "users", customerId), updates);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${customerId}`);
+      }
+    }
+    setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, pricingTierId: tierId ?? undefined } : c));
   };
 
   // Helper overrides to reset configurations
@@ -1311,9 +1443,15 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateOrderDispatch,
         approveOrder,
         declineOrder,
+        deleteOrder,
         addShippingCharge,
         companySettings,
         updateCompanySettings,
+        pricingTiers,
+        createPricingTier,
+        updatePricingTier,
+        deletePricingTier,
+        assignPricingTier,
         setPortalMode,
         resetDemoData,
         adminViewMode,

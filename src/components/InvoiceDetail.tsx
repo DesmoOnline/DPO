@@ -1,7 +1,7 @@
 import React from "react";
 import { usePortal } from "../context/PortalContext";
 import { Order } from "../types";
-import { ArrowLeft, Printer, ShieldCheck, CreditCard, ChevronRight, Truck, FileDown, Mail, Loader2, Check, X, Clock } from "lucide-react";
+import { ArrowLeft, Printer, ShieldCheck, CreditCard, ChevronRight, Truck, FileDown, Mail, Loader2, Check, X, Clock, FileText } from "lucide-react";
 import { generateInvoicePDF } from "../utils/pdfGenerator";
 
 interface InvoiceDetailProps {
@@ -17,6 +17,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
   const [emailError, setEmailError] = React.useState<string | null>(null);
 
   const order = orders.find(o => o.id === orderId);
+  const isQuote = order?.documentType === "QUOTE";
 
   if (!order) {
     return (
@@ -35,7 +36,11 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
 
   const handleDownloadPDF = () => {
     const pdf = generateInvoicePDF(order, companySettings);
-    pdf.save(`invoice_${order.id}.pdf`);
+    pdf.save(`${isQuote ? "quote" : "invoice"}_${order.id}.pdf`);
+  };
+
+  const handleApproveQuote = () => {
+    approveOrder(order.id);
   };
 
   const handleEmailInvoice = async () => {
@@ -56,10 +61,10 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
         },
         body: JSON.stringify({
           to: order.customerEmail,
-          subject: `Invoice from ${companySettings.tradingName} - ${order.id}`,
-          body: `Dear customer,\n\nPlease find attached your tax invoice (${order.id}) for your wholesale order with ${companySettings.tradingName}.\n\nTotal Amount: $${order.totalAmount.toFixed(2)} AUD\n\nPlease settle payment within ${companySettings.paymentTerms} via bank deposit.\n\nThank you,\n${companySettings.companyName}`,
+          subject: `${isQuote ? "Quote" : "Invoice"} from ${companySettings.tradingName} - ${order.id}`,
+          body: `Dear customer,\n\nPlease find attached your ${isQuote ? "quote" : "tax invoice"} (${order.id}) for your wholesale order with ${companySettings.tradingName}.\n\nTotal Amount: $${order.totalAmount.toFixed(2)} AUD\n\n${isQuote ? "This quote may be finalized with shipping before approval." : `Please settle payment within ${companySettings.paymentTerms} via bank deposit.`}\n\nThank you,\n${companySettings.companyName}`,
           pdfBase64,
-          filename: `invoice_${order.id}.pdf`
+          filename: `${isQuote ? "quote" : "invoice"}_${order.id}.pdf`
         }),
       });
 
@@ -82,6 +87,8 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
 
   const getStatusColor = (status: Order["status"]) => {
     switch (status) {
+      case "quote_requested": return "bg-amber-50 text-amber-700 border border-amber-200 rounded-full";
+      case "quote_finalized": return "bg-blue-50 text-blue-700 border border-blue-200 rounded-full";
       case "pending_approval": return "bg-amber-50 text-amber-700 border border-amber-200 rounded-full animate-pulse";
       case "approved": return "bg-indigo-50 text-indigo-705 border border-indigo-200 rounded-full";
       case "declined": return "bg-red-50 text-red-655 border border-red-200 rounded-full";
@@ -94,6 +101,8 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
 
   const getStatusLabel = (status: Order["status"]) => {
     switch (status) {
+      case "quote_requested": return "Quote Requested";
+      case "quote_finalized": return "Quote Finalized";
       case "pending_approval": return "Awaiting Review";
       case "approved": return "Approved (Unpaid)";
       case "declined": return "Declined";
@@ -114,7 +123,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
           className="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1.5 font-mono"
         >
           <ArrowLeft className="w-4 h-4 text-slate-550" />
-          Back to Invoices
+          Back to Quotes & Invoices
         </button>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -160,7 +169,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
             className="border border-slate-200 bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1.5 font-mono"
           >
             <Printer className="w-4 h-4 text-slate-300" />
-            Print Invoice
+            {isQuote ? "Print Quote" : "Print Invoice"}
           </button>
         </div>
       </div>
@@ -169,7 +178,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
       {emailStatus === "success" && (
         <div className="bg-emerald-50 border border-emerald-250 p-4 rounded-xl flex items-center gap-3 text-emerald-800 text-xs font-medium uppercase font-mono shadow-sm">
           <Check className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-          <span>Invoice PDF has been successfully emailed to <strong>{order.customerEmail}</strong>!</span>
+          <span>{isQuote ? "Quote PDF" : "Invoice PDF"} has been successfully emailed to <strong>{order.customerEmail}</strong>!</span>
         </div>
       )}
 
@@ -177,16 +186,39 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
         <div className="bg-red-50/50 border border-red-200 p-4 rounded-xl flex flex-col gap-2 text-red-800 text-xs font-mono shadow-sm">
           <div className="flex items-center gap-3 font-medium uppercase">
             <X className="w-5 h-5 text-red-600 flex-shrink-0" />
-            <span>Failed to auto-email: {emailError}</span>
+              <span>Failed to auto-email: {emailError}</span>
           </div>
           <span className="text-[10px] text-red-600/80 pl-8 normal-case font-sans">
-            Fallback activated: The invoice has been downloaded automatically. You can attach it manually to your email client. Add <strong>GMAIL_USER</strong> and <strong>GMAIL_APP_PASSWORD</strong> environment variables in your server to enable automated emailing.
+            Fallback activated: The document has been downloaded automatically. You can attach it manually to your email client. Add <strong>GMAIL_USER</strong> and <strong>GMAIL_APP_PASSWORD</strong> environment variables in your server to enable automated emailing.
           </span>
         </div>
       )}
 
       {/* Order Confirmation Banner */}
-      {order.status === "pending_approval" && (
+      {isQuote && order.status === "quote_requested" && (
+      <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3 shadow-sm mb-6" id="invoice_pending_banner">
+        <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div>
+          <h4 className="text-sm font-bold text-slate-900 tracking-tight">Quote Request Submitted - Awaiting Shipping Calculation</h4>
+          <p className="text-xs text-slate-700 leading-relaxed font-medium mt-1">
+            {companySettings.orderPendingMessage}
+          </p>
+        </div>
+      </div>)}
+
+      {isQuote && order.status === "quote_finalized" && (
+        <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3 shadow-sm mb-6" id="invoice_pending_banner">
+          <Truck className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h4 className="text-sm font-bold text-slate-900 tracking-tight">Quote Finalized With Shipping</h4>
+            <p className="text-xs text-slate-700 leading-relaxed font-medium mt-1">
+              Shipping has been added and the quote is ready for approval.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!isQuote && order.status === "pending_approval" && (
       <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3 shadow-sm mb-6" id="invoice_pending_banner">
         <Clock className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div>
@@ -214,8 +246,16 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
         {/* Invoice Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-200 pb-6 gap-6">
           <div className="space-y-1">
-            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight uppercase">TAX INVOICE</h1>
-            <p className="text-slate-500 font-mono text-xs font-semibold">REF: <span className="text-slate-800">{order.id}</span></p>
+            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight uppercase">{isQuote ? "QUOTE" : "TAX INVOICE"}</h1>
+            <p className="text-slate-500 font-mono text-xs font-semibold">
+              REF: <span className="text-slate-800">{order.id}</span>
+              {isQuote && (
+                <span className="ml-2 inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded-full text-[10px] font-bold uppercase">
+                  <FileText className="w-3 h-3" />
+                  Quote Document
+                </span>
+              )}
+            </p>
           </div>
           
           <div className="text-left md:text-right flex flex-col md:items-end w-full md:w-auto">
@@ -348,7 +388,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
       </div>
 
       {/* Admin Operations Block */}
-      {(isAdmin || order.status === "approved") && (
+      {(isAdmin || order.status === "approved" || (isQuote && order.status === "quote_finalized")) && (
         <div className="bg-white border border-slate-200 p-6 space-y-4 rounded-xl shadow-sm print:hidden" id="admin_invoice_operations">
           <h3 className="text-sm font-bold text-slate-800 font-mono uppercase tracking-wider flex items-center gap-1.5">
             <Truck className="w-5 h-5 text-blue-600" />
@@ -376,6 +416,25 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
                   className="bg-white hover:bg-slate-50 text-red-650 font-semibold uppercase text-xs tracking-wider border border-slate-200 rounded-lg py-3 px-4 shadow-sm transition"
                 >
                   Decline Order
+                </button>
+              </>
+            )}
+
+            {isQuote && order.status === "quote_finalized" && !isAdmin && (
+              <>
+                <button
+                  id="customer_approve_quote_btn"
+                  onClick={handleApproveQuote}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold uppercase text-xs tracking-wider border border-emerald-600 rounded-lg py-3 px-4 shadow-sm transition"
+                >
+                  Purchase / Order
+                </button>
+                <button
+                  id="customer_decline_quote_btn"
+                  onClick={() => declineOrder(order.id)}
+                  className="bg-white hover:bg-slate-50 text-slate-700 font-semibold uppercase text-xs tracking-wider border border-slate-200 rounded-lg py-3 px-4 shadow-sm transition"
+                >
+                  Decline Quote
                 </button>
               </>
             )}

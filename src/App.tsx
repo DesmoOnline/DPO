@@ -29,6 +29,7 @@ function AppContent() {
   
   // Navigation tabs: "catalog" | "cart" | "orders" | "admin" | "registration"
   const [activeTab, setActiveTab] = useState<string>("catalog");
+  const [ledgerSearchQuery, setLedgerSearchQuery] = useState("");
   
   // Sub-detail view states
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -54,6 +55,13 @@ function AppContent() {
 
   const handleOpenPackingSlip = (orderId: string) => {
     setSelectedPackingSlipId(orderId);
+    setSelectedInvoiceId(null);
+    setSelectedProductId(null);
+    setActiveTab("orders");
+  };
+
+  const handleSearchSubmit = () => {
+    setSelectedPackingSlipId(null);
     setSelectedInvoiceId(null);
     setSelectedProductId(null);
     setActiveTab("orders");
@@ -131,6 +139,8 @@ function AppContent() {
           <OrdersListView
             onViewInvoice={handleOpenInvoice}
             onViewPackingSlip={handleOpenPackingSlip}
+            searchQuery={ledgerSearchQuery}
+            onSearchQueryChange={setLedgerSearchQuery}
           />
         );
       case "admin":
@@ -162,6 +172,9 @@ function AppContent() {
           activeTab={activeTab} 
           setActiveTab={setActiveTab} 
           onOpenProductDetail={setSelectedProductId}
+          searchQuery={ledgerSearchQuery}
+          onSearchQueryChange={setLedgerSearchQuery}
+          onSearchSubmit={handleSearchSubmit}
         />
 
         <main className="max-w-7xl mx-auto px-4 py-12 w-full flex-1 min-h-[500px]">

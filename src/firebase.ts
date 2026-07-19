@@ -1,6 +1,6 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, setLogLevel } from "firebase/firestore";
 
 // The user's Firebase config from their Google Business Account
 export const firebaseConfig = {
@@ -26,6 +26,7 @@ try {
   }
   auth = getAuth(app);
   db = getFirestore(app);
+  setLogLevel("error");
   isFirebaseAvailable = true;
   console.log("Firebase initialized successfully in Live Mode.");
 } catch (error) {

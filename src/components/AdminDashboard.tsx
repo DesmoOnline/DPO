@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { usePortal } from "../context/PortalContext";
-import { Product, CustomerProfile, Order, GSTReportData } from "../types";
+import { Product, CustomerProfile, Order, GSTReportData, QuantityBreak } from "../types";
 import { 
   Users, 
   Wrench, 
@@ -13,8 +13,15 @@ import {
   Trash2,
   Download,
   Building,
-  Upload
+  Upload,
+  DollarSign,
+  Scale,
+  FileText,
+  Truck,
+  Pencil
 } from "lucide-react";
+import RateBreakProfileManager from "./RateBreakProfileManager";
+import WeightBreakManager from "./WeightBreakManager";
 
 export const AdminDashboard: React.FC = () => {
   const { 
@@ -27,15 +34,19 @@ export const AdminDashboard: React.FC = () => {
     removeCustomerPricing, 
     toggleRestrictedProductAccess,
     createProduct,
+    updateProduct,
     deleteProduct,
     categories,
     addCategory,
     deleteCategory,
+    addShippingCharge,
+    updateOrderDispatch,
+    deleteOrder,
     companySettings,
     updateCompanySettings
   } = usePortal();
 
-  const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products" | "company">("accounting");
+  const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products" | "company" | "quotes" | "rateBreaks" | "weightBreaks">("accounting");
 
   // Company Settings State
   const [csForm, setCsForm] = useState({ ...companySettings });
@@ -67,14 +78,51 @@ export const AdminDashboard: React.FC = () => {
   const [newProdQtyBreaks, setNewProdQtyBreaks] = useState<QuantityBreak[]>([]);
   const [newCategoryName, setNewCategoryName] = useState("");
 
+  // Product edit modal state
+  const [isEditingProduct, setIsEditingProduct] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [editProdForm, setEditProdForm] = useState<Omit<Product, "id">>({
+    name: "",
+    sku: "",
+    description: "",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 0,
+    isRestricted: false,
+    autoApprove: false,
+    quantityBreaks: [],
+    category: "General",
+    stock: 0,
+    allowBackorders: true,
+    colors: [],
+  });
+  const [editProdPreviewUrl, setEditProdPreviewUrl] = useState<string | null>(null);
+  const [editProdQbQty, setEditProdQbQty] = useState(10);
+  const [editProdQbValueType, setEditProdQbValueType] = useState<"percentage" | "fixed">("percentage");
+  const [editProdQbValue, setEditProdQbValue] = useState(5);
+  const [editProdColorInput, setEditProdColorInput] = useState("");
+  const [isSavingEditedProduct, setIsSavingEditedProduct] = useState(false);
+
   // Preview loaded local files
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+
+  // Quote shipping / finalization state
+  const [quoteShippingOrderId, setQuoteShippingOrderId] = useState<string | null>(null);
+  const [quoteShippingCost, setQuoteShippingCost] = useState("");
+  const [quoteShippingMethod, setQuoteShippingMethod] = useState("Standard Freight");
+  const [quoteShippingNotes, setQuoteShippingNotes] = useState("");
+  const [quoteShippingSubmitting, setQuoteShippingSubmitting] = useState(false);
+
+  // Invoice deletion by reference state
+  const [deleteInvoiceRef, setDeleteInvoiceRef] = useState("");
+  const [deleteInvoiceConfirm, setDeleteInvoiceConfirm] = useState("");
+  const [deleteInvoiceSubmitting, setDeleteInvoiceSubmitting] = useState(false);
 
   // Feedback states
   const [pricingInputValues, setPricingInputValues] = useState<{ [customerId_productId: string]: string }>({});
   const [basCopied, setBasCopied] = useState(false);
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+  const invoiceToDelete = orders.find(order => order.id.toLowerCase() === deleteInvoiceRef.trim().toLowerCase());
 
   // Compute accounting metrics based on date range
   const getFilteredOrders = (): Order[] => {
@@ -84,7 +132,9 @@ export const AdminDashboard: React.FC = () => {
       if (
         order.status === "pending_approval" || 
         order.status === "declined" || 
-        order.status === "cancelled"
+        order.status === "cancelled" ||
+        order.status === "quote_requested" ||
+        order.status === "quote_finalized"
       ) {
         return false;
       }
@@ -212,6 +262,123 @@ export const AdminDashboard: React.FC = () => {
     setNewProdQtyBreaks(prev => prev.filter((_, i) => i !== index));
   };
 
+  const openEditProductModal = (product: Product) => {
+    setEditingProductId(product.id);
+    setEditProdForm({
+      name: product.name,
+      sku: product.sku,
+      description: product.description,
+      imageUrl: product.imageUrl,
+      baseWholesalePrice: product.baseWholesalePrice,
+      isRestricted: product.isRestricted,
+      autoApprove: product.autoApprove ?? false,
+      quantityBreaks: product.quantityBreaks ? [...product.quantityBreaks] : [],
+      category: product.category || "General",
+      stock: product.stock ?? 0,
+      allowBackorders: product.allowBackorders ?? true,
+      colors: product.colors ? [...product.colors] : [],
+    });
+    setEditProdPreviewUrl(product.imageUrl && product.imageUrl !== "placeholder" ? product.imageUrl : null);
+    setEditProdQbQty(10);
+    setEditProdQbValueType("percentage");
+    setEditProdQbValue(5);
+    setEditProdColorInput("");
+    setIsEditingProduct(true);
+  };
+
+  const closeEditProductModal = () => {
+    setIsEditingProduct(false);
+    setEditingProductId(null);
+    setEditProdForm({
+      name: "",
+      sku: "",
+      description: "",
+      imageUrl: "placeholder",
+      baseWholesalePrice: 0,
+      isRestricted: false,
+      autoApprove: false,
+      quantityBreaks: [],
+      category: "General",
+      stock: 0,
+      allowBackorders: true,
+      colors: [],
+    });
+    setEditProdPreviewUrl(null);
+    setEditProdQbQty(10);
+    setEditProdQbValueType("percentage");
+    setEditProdQbValue(5);
+    setEditProdColorInput("");
+    setIsSavingEditedProduct(false);
+  };
+
+  const handleEditImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setEditProdForm(prev => ({ ...prev, imageUrl: result }));
+      setEditProdPreviewUrl(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAddEditQtyBreak = () => {
+    if (editProdQbQty <= 1 || editProdQbValue < 0) return;
+    setEditProdForm(prev => ({
+      ...prev,
+      quantityBreaks: [...(prev.quantityBreaks || []), {
+        minQty: editProdQbQty,
+        discountType: editProdQbValueType,
+        discountValue: editProdQbValue,
+      }].sort((a, b) => a.minQty - b.minQty)
+    }));
+    setEditProdQbQty(10);
+    setEditProdQbValue(5);
+  };
+
+  const handleRemoveEditQtyBreak = (index: number) => {
+    setEditProdForm(prev => ({
+      ...prev,
+      quantityBreaks: (prev.quantityBreaks || []).filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleAddEditColor = () => {
+    const nextColor = editProdColorInput.trim();
+    if (!nextColor) return;
+    setEditProdForm(prev => ({
+      ...prev,
+      colors: Array.from(new Set([...(prev.colors || []), nextColor]))
+    }));
+    setEditProdColorInput("");
+  };
+
+  const handleRemoveEditColor = (color: string) => {
+    setEditProdForm(prev => ({
+      ...prev,
+      colors: (prev.colors || []).filter(existing => existing !== color)
+    }));
+  };
+
+  const handleSaveEditedProduct = async () => {
+    if (!editingProductId) return;
+    if (!editProdForm.name.trim() || !editProdForm.sku.trim()) return;
+
+    setIsSavingEditedProduct(true);
+    try {
+      await updateProduct(editingProductId, {
+        ...editProdForm,
+        quantityBreaks: editProdForm.quantityBreaks && editProdForm.quantityBreaks.length > 0 ? [...editProdForm.quantityBreaks] : [],
+        colors: editProdForm.colors && editProdForm.colors.length > 0 ? [...editProdForm.colors] : [],
+      });
+      closeEditProductModal();
+    } finally {
+      setIsSavingEditedProduct(false);
+    }
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -315,6 +482,41 @@ export const AdminDashboard: React.FC = () => {
     alert("Custom contract pricing updated!");
   };
 
+  const handleFinalizeQuote = async () => {
+    if (!quoteShippingOrderId || !quoteShippingCost) return;
+    const shipping = parseFloat(quoteShippingCost);
+    if (Number.isNaN(shipping) || shipping < 0) return;
+
+    setQuoteShippingSubmitting(true);
+    try {
+      await addShippingCharge(quoteShippingOrderId, shipping);
+      await updateOrderDispatch(quoteShippingOrderId, {
+        freightCompany: quoteShippingMethod,
+        consignmentNote: quoteShippingNotes,
+        packingStatus: "Hold"
+      });
+      setQuoteShippingOrderId(null);
+      setQuoteShippingCost("");
+      setQuoteShippingNotes("");
+    } finally {
+      setQuoteShippingSubmitting(false);
+    }
+  };
+
+  const handleDeleteInvoiceByReference = async () => {
+    if (!invoiceToDelete) return;
+    if (deleteInvoiceConfirm.trim().toUpperCase() !== "DELETE") return;
+
+    setDeleteInvoiceSubmitting(true);
+    try {
+      await deleteOrder(invoiceToDelete.id);
+      setDeleteInvoiceRef("");
+      setDeleteInvoiceConfirm("");
+    } finally {
+      setDeleteInvoiceSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-8" id="admin_dashboard_container">
       {/* Top Banner */}
@@ -344,21 +546,33 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Segment Selector tabs */}
       <div className="flex items-center gap-2 overflow-x-auto max-w-full py-1 border-b border-slate-100 pb-4" id="admin_tab_selector">
-        {(["accounting", "company", "customers", "products"] as const).map((tab) => {
+        {(["accounting", "company", "customers", "products", "quotes", "rateBreaks", "weightBreaks"] as const).map((tab) => {
           const label = tab === "accounting" 
             ? "Bookkeeping & GST" 
             : tab === "company"
               ? "Company Details"
               : tab === "customers" 
                 ? `Customers (${customers.filter(c => !["lew@desmoproducts.com.au", "1@1.com"].includes(c.email)).length})` 
-                : "Products";
+                : tab === "products"
+                  ? "Products"
+                  : tab === "quotes"
+                    ? `Quotes (${orders.filter(o => o.documentType === "QUOTE").length})`
+                  : tab === "rateBreaks"
+                    ? "Rate Break Profiles"
+                    : "Weight Breaks";
           const icon = tab === "accounting" 
             ? <TrendingUp className="w-4 h-4" /> 
             : tab === "company"
               ? <Building className="w-4 h-4" />
               : tab === "customers" 
                 ? <Users className="w-4 h-4" /> 
-                : <Wrench className="w-4 h-4" />;
+                : tab === "products"
+                  ? <Wrench className="w-4 h-4" />
+                  : tab === "quotes"
+                    ? <FileText className="w-4 h-4" />
+                  : tab === "rateBreaks"
+                    ? <DollarSign className="w-4 h-4" />
+                    : <Scale className="w-4 h-4" />;
           return (
             <button
               key={tab}
@@ -459,6 +673,76 @@ export const AdminDashboard: React.FC = () => {
                 GST collected representing 1/11th of gross wholesale sales.
               </p>
             </div>
+          </div>
+
+          {/* Invoice deletion safeguard */}
+          <div className="bg-rose-50 border border-rose-200 rounded-xl p-6 shadow-sm space-y-4">
+            <div className="flex items-start justify-between gap-4 border-b border-rose-200 pb-4">
+              <div>
+                <h3 className="text-sm font-bold text-rose-900 uppercase tracking-wider">Delete Invoice / Quote by Number</h3>
+                <p className="text-xs text-rose-700 mt-1">Type the exact invoice number to look it up, then confirm with the word DELETE. This removes the document from the Master Wholesale Ledger, including shipped documents.</p>
+              </div>
+              <Shield className="w-8 h-8 text-rose-700 flex-shrink-0" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-end">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-rose-700 uppercase font-semibold">Invoice / Quote Number</label>
+                <input
+                  type="text"
+                  value={deleteInvoiceRef}
+                  onChange={(e) => {
+                    setDeleteInvoiceRef(e.target.value);
+                    setDeleteInvoiceConfirm("");
+                  }}
+                  placeholder="e.g. INV-1003 or QTE-1234"
+                  className="w-full bg-white border border-rose-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-rose-700 uppercase font-semibold">Type DELETE to confirm</label>
+                <input
+                  type="text"
+                  value={deleteInvoiceConfirm}
+                  onChange={(e) => setDeleteInvoiceConfirm(e.target.value)}
+                  placeholder="DELETE"
+                  className="w-full bg-white border border-rose-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <button
+                onClick={handleDeleteInvoiceByReference}
+                disabled={!invoiceToDelete || deleteInvoiceConfirm.trim().toUpperCase() !== "DELETE" || deleteInvoiceSubmitting}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-wider rounded-lg px-4 py-3 shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleteInvoiceSubmitting ? "Deleting..." : "Delete from Ledger"}
+              </button>
+            </div>
+
+            {deleteInvoiceRef.trim() !== "" && (
+              <div className="bg-white border border-rose-200 rounded-lg p-4 text-xs text-slate-700 space-y-2">
+                {invoiceToDelete ? (
+                  <>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <span className="font-bold text-slate-900">{invoiceToDelete.id}</span>
+                      <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase border ${invoiceToDelete.status === "shipped" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                        {invoiceToDelete.documentType === "QUOTE" ? "Quote" : "Invoice"}
+                      </span>
+                      <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase border ${invoiceToDelete.status === "shipped" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                        {invoiceToDelete.status}
+                      </span>
+                    </div>
+                    <p><strong>Company:</strong> {invoiceToDelete.companyName}</p>
+                    <p><strong>Total:</strong> ${invoiceToDelete.totalAmount.toFixed(2)}</p>
+                    <p><strong>Created:</strong> {new Date(invoiceToDelete.createdAt).toLocaleDateString('en-AU')}</p>
+                    <p className="text-rose-700 font-semibold">This document can be removed once you type DELETE and click the button.</p>
+                  </>
+                ) : (
+                  <p className="text-slate-500">No matching invoice or quote found in the ledger.</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Table of sales by customer & Month */}
@@ -854,6 +1138,91 @@ export const AdminDashboard: React.FC = () => {
                     Approved partner accounts can access wholesale portal prices and submit order drafts. Denied accounts are barred. 
                   </p>
                 </div>
+
+                {/* Rate Break Profile Assignment (Only for Approved users) */}
+                {selectedCustomer.status === "approved" && (
+                  <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 shadow-sm">
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-2">
+                      Rate Break Profile Assignment
+                    </h4>
+                    <p className="text-xs text-slate-500 leading-normal">
+                      Assign a rate break profile to apply quantity-based discounts to this customer. The profile will determine product-specific quantity breaks.
+                    </p>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">
+                        Select Rate Break Profile
+                      </label>
+                      <select
+                        id={`rate_break_profile_${selectedCustomer.id}`}
+                        value={selectedCustomer.rateBreakProfileId || ""}
+                        onChange={(e) => {
+                          const profileId = e.target.value || undefined;
+                          // This would need to be implemented in your context/backend
+                          console.log(`Assigning rate break profile ${profileId} to customer ${selectedCustomer.id}`);
+                          alert(`Rate break profile assignment feature requires backend integration. Selected: ${profileId || "None"}`);
+                        }}
+                        className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-slate-800 focus:outline-none focus:border-blue-500 transition text-xs"
+                      >
+                        <option value="">No Rate Break Profile</option>
+                        <option value="rbp-wholesale" disabled>Wholesale Partner (Create in Rate Break Profiles tab)</option>
+                        <option value="rbp-vip" disabled>VIP Partner (Create in Rate Break Profiles tab)</option>
+                      </select>
+                      <p className="text-[10px] text-slate-400 italic">
+                        📝 Note: Create rate break profiles in the "Rate Break Profiles" admin tab first, then they'll appear here.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Weight Break Assignment (Only for Approved users) */}
+                {selectedCustomer.status === "approved" && (
+                  <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 shadow-sm">
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-2">
+                      Weight Break Assignments (Per Product)
+                    </h4>
+                    <p className="text-xs text-slate-500 leading-normal">
+                      Assign weight break tiers to specific products. Customer can have multiple tiers per product (best price wins).
+                      Leave empty to use rate break profile or standard pricing.
+                    </p>
+                    
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {products.map((product) => {
+                        const assignedBreaks = selectedCustomer.weightBreakAssignments?.[product.id] || [];
+                        return (
+                          <div key={product.id} className="bg-slate-50 border border-slate-200 p-3 rounded-lg">
+                            <div className="mb-2">
+                              <p className="font-semibold text-xs text-slate-800 uppercase tracking-tight">{product.name}</p>
+                              <p className="text-[10px] text-slate-500 font-mono">{product.sku}</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {[...Array(10)].map((_, i) => {
+                                const id = `wbt-${i + 1}`;
+                                const isAssigned = assignedBreaks.includes(id);
+                                return (
+                                  <button
+                                    key={id}
+                                    onClick={() => {
+                                      console.log(`Toggle weight break ${id} for product ${product.id}`);
+                                      alert("Weight break assignment requires backend integration");
+                                    }}
+                                    className={`px-3 py-1.5 rounded text-xs font-semibold transition ${
+                                      isAssigned
+                                        ? "bg-blue-600 text-white border-blue-600"
+                                        : "bg-white border border-slate-300 text-slate-700 hover:border-blue-400"
+                                    }`}
+                                  >
+                                    Tier {i + 1}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* PricingOverrides and Products Assignment (Only for Approved users) */}
                 {selectedCustomer.status === "approved" && (
@@ -1313,22 +1682,354 @@ export const AdminDashboard: React.FC = () => {
                         {p.quantityBreaks?.length || 0} breaks
                       </td>
                       <td className="px-3 py-2.5 text-center">
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => openEditProductModal(p)}
+                            className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition inline-flex items-center justify-center"
+                            title="Edit Product"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if(window.confirm(`Are you sure you want to delete ${p.name}?`)) {
+                                deleteProduct(p.id);
+                              }
+                            }}
+                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition inline-flex items-center justify-center"
+                            title="Delete Product"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab Content: Quotes */}
+      {activeSubTab === "quotes" && (
+        <div className="space-y-6" id="admin_quotes_panel">
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 tracking-tight">Quote Requests</h3>
+              <p className="text-xs text-slate-500 uppercase font-mono mt-1">Finalize freight and release quote documents for customer approval.</p>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-600 uppercase tracking-wider border-b border-slate-200">
+                    <th className="px-4 py-3 text-left">Quote ID</th>
+                    <th className="px-4 py-3 text-left">Company</th>
+                    <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-right">Subtotal</th>
+                    <th className="px-4 py-3 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {orders.filter(o => o.documentType === "QUOTE").map((order) => (
+                    <tr key={order.id} className="hover:bg-slate-50/60">
+                      <td className="px-4 py-3 font-bold text-slate-900">{order.id}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-slate-800">{order.companyName}</div>
+                        <div className="text-[10px] text-slate-500 font-mono">{order.customerEmail}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase border ${order.status === "quote_finalized" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                          {order.status === "quote_finalized" ? "Finalized" : "Needs Shipping"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold">${order.subtotal.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-center">
                         <button
                           onClick={() => {
-                            if(window.confirm(`Are you sure you want to delete ${p.name}?`)) {
-                              deleteProduct(p.id);
-                            }
+                            setQuoteShippingOrderId(order.id);
+                            setQuoteShippingCost(order.shippingCharge?.toFixed(2) || "");
+                            setQuoteShippingMethod(order.freightCompany || "Standard Freight");
+                            setQuoteShippingNotes(order.consignmentNote || "");
                           }}
-                          className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition inline-flex items-center justify-center"
-                          title="Delete Product"
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold inline-flex items-center gap-1.5"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Truck className="w-3.5 h-3.5" />
+                          Add Shipping
                         </button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab Content: Rate Break Profiles */}
+      {activeSubTab === "rateBreaks" && (
+        <RateBreakProfileManager />
+      )}
+
+      {/* Tab Content: Weight Breaks */}
+      {activeSubTab === "weightBreaks" && (
+        <WeightBreakManager />
+      )}
+
+      {quoteShippingOrderId && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setQuoteShippingOrderId(null)}>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xl p-6 w-full max-w-md mx-4 space-y-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+              <Truck className="w-5 h-5 text-blue-600" />
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider font-mono">Finalize Quote</h3>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase font-mono tracking-wider block">Shipping Amount (AUD ex. GST)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={quoteShippingCost}
+                onChange={(e) => setQuoteShippingCost(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono"
+                placeholder="25.00"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase font-mono tracking-wider block">Shipping Method</label>
+              <select
+                value={quoteShippingMethod}
+                onChange={(e) => setQuoteShippingMethod(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono"
+              >
+                <option>Standard Freight</option>
+                <option>Express Freight</option>
+                <option>Courier</option>
+                <option>Pallet Delivery</option>
+                <option>Own Transport (Pickup)</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase font-mono tracking-wider block">Consignment Note / Notes</label>
+              <textarea
+                value={quoteShippingNotes}
+                onChange={(e) => setQuoteShippingNotes(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono h-20"
+                placeholder="Estimated 2-3 business days..."
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setQuoteShippingOrderId(null)}
+                className="flex-1 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFinalizeQuote}
+                disabled={quoteShippingSubmitting || !quoteShippingCost || parseFloat(quoteShippingCost) < 0}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm disabled:opacity-50"
+              >
+                {quoteShippingSubmitting ? "Saving..." : "Finalize Quote"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isEditingProduct && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={closeEditProductModal}>
+          <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white border border-slate-200 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-4 p-6 border-b border-slate-200 sticky top-0 bg-white z-10">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 tracking-tight">Edit Product</h3>
+                <p className="text-xs text-slate-500 uppercase font-mono mt-1">Update all product fields in one place</p>
+              </div>
+              <button
+                onClick={closeEditProductModal}
+                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Product Name</label>
+                      <input value={editProdForm.name} onChange={(e) => setEditProdForm(prev => ({ ...prev, name: e.target.value }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">SKU</label>
+                      <input value={editProdForm.sku} onChange={(e) => setEditProdForm(prev => ({ ...prev, sku: e.target.value }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Description</label>
+                    <textarea value={editProdForm.description} onChange={(e) => setEditProdForm(prev => ({ ...prev, description: e.target.value }))} className="w-full min-h-28 bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500" />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Base Wholesale Price</label>
+                      <input type="number" min="0" step="0.01" value={editProdForm.baseWholesalePrice} onChange={(e) => setEditProdForm(prev => ({ ...prev, baseWholesalePrice: Math.max(0, parseFloat(e.target.value) || 0) }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Stock</label>
+                      <input type="number" min="0" value={editProdForm.stock ?? 0} onChange={(e) => setEditProdForm(prev => ({ ...prev, stock: Math.max(0, parseInt(e.target.value) || 0) }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Category</label>
+                      <input value={editProdForm.category || ""} onChange={(e) => setEditProdForm(prev => ({ ...prev, category: e.target.value }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Image</label>
+                    <div className="flex flex-col md:flex-row gap-3 md:items-start">
+                      <div className="flex-1 space-y-2">
+                        <div className="relative">
+                          <input type="file" accept="image/png, image/jpeg, image/webp" onChange={handleEditImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                          <div className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium flex items-center justify-center gap-2 hover:bg-slate-100 transition cursor-pointer">
+                            <Upload className="w-4 h-4 text-blue-600" />
+                            <span className="text-slate-600">Upload image</span>
+                          </div>
+                        </div>
+                        <input
+                          type="text"
+                          value={editProdForm.imageUrl}
+                          onChange={(e) => {
+                            setEditProdForm(prev => ({ ...prev, imageUrl: e.target.value }));
+                            setEditProdPreviewUrl(e.target.value);
+                          }}
+                          placeholder="Paste image URL or base64 data"
+                          className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-[10px] text-slate-800 font-mono focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="w-28 h-28 border border-slate-200 rounded-xl overflow-hidden bg-slate-50 flex items-center justify-center flex-shrink-0">
+                        {editProdPreviewUrl && editProdPreviewUrl !== "placeholder" ? (
+                          <img src={editProdPreviewUrl} alt="Product preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-mono uppercase text-center px-2">No image</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                    <p className="text-[10px] font-mono text-slate-500 uppercase font-semibold tracking-wider border-b border-slate-200 pb-2">Switches</p>
+                    <label className="flex items-center justify-between gap-4 text-xs font-semibold text-slate-700">
+                      Restricted
+                      <input type="checkbox" checked={editProdForm.isRestricted} onChange={(e) => setEditProdForm(prev => ({ ...prev, isRestricted: e.target.checked }))} className="w-5 h-5 accent-blue-600" />
+                    </label>
+                    <label className="flex items-center justify-between gap-4 text-xs font-semibold text-slate-700">
+                      Auto Approve
+                      <input type="checkbox" checked={editProdForm.autoApprove ?? false} onChange={(e) => setEditProdForm(prev => ({ ...prev, autoApprove: e.target.checked }))} className="w-5 h-5 accent-blue-600" />
+                    </label>
+                    <label className="flex items-center justify-between gap-4 text-xs font-semibold text-slate-700">
+                      Allow Backorders
+                      <input type="checkbox" checked={editProdForm.allowBackorders ?? true} onChange={(e) => setEditProdForm(prev => ({ ...prev, allowBackorders: e.target.checked }))} className="w-5 h-5 accent-blue-600" />
+                    </label>
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                    <p className="text-[10px] font-mono text-slate-500 uppercase font-semibold tracking-wider border-b border-slate-200 pb-2">Colors</p>
+                    <div className="flex gap-2">
+                      <input
+                        value={editProdColorInput}
+                        onChange={(e) => setEditProdColorInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddEditColor();
+                          }
+                        }}
+                        placeholder="Add color"
+                        className="flex-1 bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      />
+                      <button type="button" onClick={handleAddEditColor} className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg text-xs font-bold uppercase">Add</button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(editProdForm.colors || []).length === 0 ? (
+                        <span className="text-[10px] text-slate-400 font-mono uppercase">No colors set</span>
+                      ) : (editProdForm.colors || []).map((color) => (
+                        <button key={color} type="button" onClick={() => handleRemoveEditColor(color)} className="px-2.5 py-1 rounded-full bg-white border border-slate-200 text-[10px] font-semibold text-slate-700 hover:border-red-300 hover:text-red-700">
+                          {color} ×
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                  <p className="text-[10px] font-mono text-slate-500 uppercase font-semibold tracking-wider border-b border-slate-200 pb-2">Quantity Breaks</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                    <input type="number" min="2" value={editProdQbQty} onChange={(e) => setEditProdQbQty(Math.max(2, parseInt(e.target.value) || 2))} className="bg-white border border-slate-200 rounded-lg p-2 text-xs font-mono focus:outline-none focus:border-blue-500" />
+                    <select value={editProdQbValueType} onChange={(e) => setEditProdQbValueType(e.target.value as "percentage" | "fixed")} className="bg-white border border-slate-200 rounded-lg p-2 text-xs font-mono focus:outline-none focus:border-blue-500">
+                      <option value="percentage">% Off</option>
+                      <option value="fixed">Fixed $</option>
+                    </select>
+                    <input type="number" min="0" step="0.01" value={editProdQbValue} onChange={(e) => setEditProdQbValue(Math.max(0, parseFloat(e.target.value) || 0))} className="bg-white border border-slate-200 rounded-lg p-2 text-xs font-mono focus:outline-none focus:border-blue-500" />
+                    <button type="button" onClick={handleAddEditQtyBreak} className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg text-xs font-bold uppercase">Add</button>
+                  </div>
+                  <div className="space-y-2">
+                    {(editProdForm.quantityBreaks || []).length === 0 ? (
+                      <p className="text-[10px] text-slate-400 font-mono uppercase">No quantity breaks set</p>
+                    ) : (editProdForm.quantityBreaks || []).map((qb, index) => (
+                      <div key={`${qb.minQty}-${index}`} className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono">
+                        <span>Qty {qb.minQty}+ {qb.discountType === "fixed" ? `$${qb.discountValue}` : `${qb.discountValue}%`} off</span>
+                        <button type="button" onClick={() => handleRemoveEditQtyBreak(index)} className="text-red-600 font-bold">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                  <p className="text-[10px] font-mono text-slate-500 uppercase font-semibold tracking-wider border-b border-slate-200 pb-2">Summary</p>
+                  <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                    <div className="bg-white border border-slate-200 rounded-lg p-3">
+                      <p className="text-slate-500 uppercase text-[10px] font-semibold">Category</p>
+                      <p className="text-slate-800 font-bold mt-1">{editProdForm.category || "General"}</p>
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-lg p-3">
+                      <p className="text-slate-500 uppercase text-[10px] font-semibold">Image Source</p>
+                      <p className="text-slate-800 font-bold mt-1 truncate">{editProdForm.imageUrl ? "Set" : "None"}</p>
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-lg p-3">
+                      <p className="text-slate-500 uppercase text-[10px] font-semibold">Backorders</p>
+                      <p className="text-slate-800 font-bold mt-1">{editProdForm.allowBackorders ? "Enabled" : "Disabled"}</p>
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-lg p-3">
+                      <p className="text-slate-500 uppercase text-[10px] font-semibold">Qty Breaks</p>
+                      <p className="text-slate-800 font-bold mt-1">{editProdForm.quantityBreaks?.length || 0}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-200">
+                <button type="button" onClick={closeEditProductModal} className="px-4 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold uppercase tracking-wider">
+                  Cancel
+                </button>
+                <button type="button" onClick={handleSaveEditedProduct} disabled={isSavingEditedProduct || !editProdForm.name.trim() || !editProdForm.sku.trim()} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold uppercase tracking-wider disabled:opacity-50">
+                  {isSavingEditedProduct ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

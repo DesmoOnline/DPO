@@ -7,11 +7,12 @@ import { EditOrderModal } from "./EditOrderModal";
 interface OrdersListViewProps {
   onViewInvoice: (orderId: string) => void;
   onViewPackingSlip: (orderId: string) => void;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
 }
 
-export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, onViewPackingSlip }) => {
+export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, onViewPackingSlip, searchQuery, onSearchQueryChange }) => {
   const { orders, isAdmin, currentUser, approveOrder, declineOrder, updateOrderStatus, updateOrderDispatch, addShippingCharge } = usePortal();
-  const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // Shipping charge modal state
@@ -47,9 +48,11 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
   const filteredOrders = orders.filter(order => {
     // Search filter
     const matchesSearch = 
-      order.id.toLowerCase().includes(search.toLowerCase()) ||
-      order.companyName.toLowerCase().includes(search.toLowerCase()) ||
-      order.customerEmail.toLowerCase().includes(search.toLowerCase());
+      order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (order.documentType || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.status.toLowerCase().includes(searchQuery.toLowerCase());
 
     // Status filter
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
@@ -59,6 +62,18 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
 
   const getStatusBadge = (status: Order["status"]) => {
     switch (status) {
+      case "quote_requested":
+        return (
+          <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full">
+            Quote Requested
+          </span>
+        );
+      case "quote_finalized":
+        return (
+          <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full">
+            Quote Finalized
+          </span>
+        );
       case "pending_approval":
         return (
           <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full animate-pulse">
@@ -140,12 +155,12 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
     <div className="space-y-8" id="orders_list_container">
       <div className="space-y-2">
         <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-          {isAdmin ? "Master Wholesale Ledger" : "My Dealer Invoices"}
+          {isAdmin ? "Master Wholesale Ledger" : "My Quotes & Invoices"}
         </h2>
         <p className="text-xs text-slate-500 uppercase font-mono font-semibold tracking-wider">
           {isAdmin 
             ? "Administrative logs of all wholesale transactions, order fulfillments, and tax receipts." 
-            : "Review past invoices, check payment state and access corresponding logistics packing slips."}
+            : "Review quotes and invoices, check shipping updates, and open each document to continue to purchase."}
         </p>
       </div>
 
@@ -156,9 +171,9 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
           <input
             id="orders_search_input"
             type="text"
-            placeholder={isAdmin ? "Search by invoice, company or email..." : "Search by invoice..."}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            placeholder={isAdmin ? "Search by invoice, company or email..." : "Search by quote or invoice..."}
+            value={searchQuery}
+            onChange={(e) => onSearchQueryChange(e.target.value)}
             className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-250 rounded-lg text-slate-800 text-xs placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition font-medium"
           />
         </div>
@@ -172,6 +187,8 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
             className="bg-white text-xs text-slate-700 border border-slate-250 rounded-lg px-3 py-2 font-mono font-semibold uppercase outline-none focus:border-blue-500 transition shadow-sm"
           >
             <option value="all">All States</option>
+            <option value="quote_requested">Quote Requested</option>
+            <option value="quote_finalized">Quote Finalized</option>
             <option value="pending_approval">Awaiting Approval</option>
             <option value="approved">Approved (Unpaid)</option>
             <option value="declined">Declined</option>
@@ -277,6 +294,12 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                   <tr key={order.id} id={`ledger_row_${order.id}`} className="hover:bg-slate-50/50 transition">
                     <td className="px-5 py-4 font-bold text-slate-900">
                       {order.id}
+                      {order.documentType === "QUOTE" && (
+                        <span className="ml-2 text-[8px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-bold uppercase">Quote</span>
+                      )}
+                      {(!order.documentType || order.documentType === "INVOICE") && (
+                        <span className="ml-2 text-[8px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded-full font-bold uppercase">Invoice</span>
+                      )}
                       {order.ownTransport && (
                         <span className="ml-2 text-[8px] bg-teal-50 text-teal-700 border border-teal-200 px-1.5 py-0.5 rounded-full font-bold uppercase">Own Transport</span>
                       )}
@@ -307,10 +330,10 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                           id={`view_inv_${order.id}`}
                           onClick={() => onViewInvoice(order.id)}
                           className="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 py-1.5 px-3 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1"
-                          title="View Tax Invoice"
+                          title={order.documentType === "QUOTE" ? "View Quote" : "View Invoice"}
                         >
                           <FileText className="w-3.5 h-3.5 text-slate-550" />
-                          Invoice
+                          {order.documentType === "QUOTE" ? "Quote" : "Invoice"}
                         </button>
                         {isAdmin && (
                           <button

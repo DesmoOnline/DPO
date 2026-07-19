@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { usePortal } from "../context/PortalContext";
 import { Trash2, ShoppingCart, ShoppingBag, ArrowRight, FileText, CheckCircle, Users, UserPlus, Truck } from "lucide-react";
 import { ProductPlaceholderImage } from "./ProductPlaceholderImage";
+import { getRateBreakProfile, getProductRateBreaks, calculatePriceWithRateBreaks } from "../utils/rateBreakProfileUtils";
+import { getCustomerWeightBreaksForProduct, calculatePriceWithWeightBreaks } from "../utils/weightBreakUtils";
 
 interface CartViewProps {
   onOrderCompleted: (orderId: string) => void;
@@ -26,6 +28,9 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
   const [selectedDeliveryAddress, setSelectedDeliveryAddress] = useState("");
   const [newDeliveryAddress, setNewDeliveryAddress] = useState("");
   const [isAddingAddress, setIsAddingAddress] = useState(false);
+  const [rateBreakProfile, setRateBreakProfile] = useState<any>(null);
+  const [weightBreaksMap, setWeightBreaksMap] = useState<{ [productId: string]: any[] }>({});
+  const [documentMode, setDocumentMode] = useState<"QUOTE" | "INVOICE">("QUOTE");
 
   // Admin on-behalf-of state
   const [orderForMode, setOrderForMode] = useState<"self" | "registered" | "manual">("self");
@@ -38,6 +43,48 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
   const approvedCustomers = customers.filter(
     c => c.status === "approved" && c.id !== currentUser?.id
   );
+
+  // Load rate break profile and weight breaks when customer changes
+  useEffect(() => {
+    const loadPricingData = async () => {
+      if (!currentUser) return;
+
+      // Load rate break profile
+      if (currentUser.rateBreakProfileId) {
+        try {
+          const profile = await getRateBreakProfile(currentUser.rateBreakProfileId);
+          setRateBreakProfile(profile);
+        } catch (err) {
+          console.error("Failed to load rate break profile:", err);
+          setRateBreakProfile(null);
+        }
+      } else {
+        setRateBreakProfile(null);
+      }
+
+      // Load weight breaks for all products
+      if (currentUser.weightBreakAssignments && Object.keys(currentUser.weightBreakAssignments).length > 0) {
+        try {
+          const newWeightBreaksMap: { [productId: string]: any[] } = {};
+          for (const [productId, templateIds] of Object.entries(currentUser.weightBreakAssignments)) {
+            const ids = templateIds as string[];
+            if (ids && ids.length > 0) {
+              const breaks = await getCustomerWeightBreaksForProduct(ids, productId);
+              newWeightBreaksMap[productId] = breaks;
+            }
+          }
+          setWeightBreaksMap(newWeightBreaksMap);
+        } catch (err) {
+          console.error("Failed to load weight breaks:", err);
+          setWeightBreaksMap({});
+        }
+      } else {
+        setWeightBreaksMap({});
+      }
+    };
+
+    loadPricingData();
+  }, [currentUser?.rateBreakProfileId, currentUser?.weightBreakAssignments]);
 
   if (!currentUser || (!isActualAdmin && currentUser.status !== "approved")) {
     return (
@@ -77,8 +124,36 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
     let discountPercent = 0;
     let finalPricePerUnit = originalPrice;
     let isFixedDiscount = false;
+    let appliedFrom = "default"; // Track where discount came from
 
-    if (prod.quantityBreaks && prod.quantityBreaks.length > 0) {
+    // Priority 1: Weight Breaks (if assigned to this customer for this product)
+    const weightBreaks = weightBreaksMap[prod.id];
+    if (weightBreaks && weightBreaks.length > 0) {
+      const weightResult = calculatePriceWithWeightBreaks(originalPrice, item.qty, weightBreaks);
+      if (weightResult.appliedTemplate) {
+        finalPricePerUnit = weightResult.finalPrice;
+        discountPercent = Math.round(weightResult.discountPercent);
+        appliedFrom = "weight";
+      }
+    }
+
+    // Priority 2: Rate Break Profile (if no weight breaks applied)
+    if (appliedFrom === "default" && rateBreakProfile) {
+      const profileBreaks = getProductRateBreaks(rateBreakProfile, prod.id);
+      if (profileBreaks && profileBreaks.length > 0) {
+        const calculatedPrice = calculatePriceWithRateBreaks(originalPrice, item.qty, profileBreaks);
+        finalPricePerUnit = calculatedPrice;
+        
+        // Calculate discount percent for display
+        if (calculatedPrice < originalPrice) {
+          discountPercent = Math.round(((originalPrice - calculatedPrice) / originalPrice) * 100);
+        }
+        appliedFrom = "profile";
+      }
+    }
+    
+    // Priority 3: Product Quantity Breaks (if no profile breaks)
+    if (appliedFrom === "default" && prod.quantityBreaks && prod.quantityBreaks.length > 0) {
       const matchedBreak = [...prod.quantityBreaks]
         .sort((a,b) => b.minQty - a.minQty)
         .find(qb => item.qty >= qb.minQty);
@@ -106,7 +181,8 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
       isFixedDiscount,
       finalPricePerUnit,
       totalLineAmount,
-      selectedColors: item.selectedColors
+      selectedColors: item.selectedColors,
+      appliedFrom
     };
   });
 
@@ -168,7 +244,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
         }
       }
 
-      const order = await placeOrder(notes, onBehalfOf, ownTransport, finalAddress);
+      const order = await placeOrder(notes, onBehalfOf, ownTransport, finalAddress, documentMode);
       onOrderCompleted(order.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to place wholesale order. Please try again.");
@@ -182,6 +258,46 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
       <div className="space-y-2">
         <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Review Wholesale Order</h2>
         <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Verify quantities, contract pricing rates, and quantity breaks prior to submission.</p>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-bold text-slate-700">Document Type:</span>
+            <div className="bg-white rounded-lg p-1 flex border border-slate-200">
+              <button
+                onClick={() => setDocumentMode("QUOTE")}
+                className={`px-4 py-2 text-xs font-bold rounded transition ${
+                  documentMode === "QUOTE"
+                    ? "bg-blue-600 text-white"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Quote
+              </button>
+              <button
+                onClick={() => setDocumentMode("INVOICE")}
+                className={`px-4 py-2 text-xs font-bold rounded transition ${
+                  documentMode === "INVOICE"
+                    ? "bg-blue-600 text-white"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Purchase Order
+              </button>
+            </div>
+          </div>
+          {documentMode === "QUOTE" && (
+            <span className="text-[10px] text-amber-600 font-bold uppercase bg-amber-50 px-3 py-1 rounded-full border border-amber-200 self-start md:self-auto">
+              Shipping Not Included
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-slate-600 leading-relaxed">
+          {documentMode === "QUOTE"
+            ? "Submit this as a quote request. Desmo can add freight later and finalize it for approval."
+            : "Submit this as a purchase order / invoice workflow request."}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -309,14 +425,14 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
                 
                 {!isAddingAddress ? (
                   <div className="space-y-3">
-                    {effectiveCustomer.deliveryAddresses && effectiveCustomer.deliveryAddresses.length > 0 ? (
+                    {currentUser.deliveryAddresses && currentUser.deliveryAddresses.length > 0 ? (
                       <select
                         value={selectedDeliveryAddress}
                         onChange={(e) => setSelectedDeliveryAddress(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-250 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                       >
                         <option value="">Select a saved address...</option>
-                        {effectiveCustomer.deliveryAddresses.map((addr: string, i: number) => (
+                        {currentUser.deliveryAddresses.map((addr: string, i: number) => (
                           <option key={i} value={addr}>{addr}</option>
                         ))}
                       </select>
@@ -478,7 +594,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
 
           <div className="bg-white border border-slate-200 p-6 space-y-6 shadow-sm rounded-xl">
             <h3 className="text-sm font-semibold text-slate-800 font-mono uppercase tracking-wider border-b border-slate-200 pb-3">
-              Wholesale Invoice Summary
+              Wholesale Document Summary
             </h3>
 
             <div className="space-y-3.5 text-xs font-mono text-slate-550 font-bold uppercase">
@@ -517,14 +633,18 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Processing Invoice...
+                  Processing {documentMode === "QUOTE" ? "Quote" : "Invoice"}...
                 </>
               ) : !canSubmit() ? (
                 "Select Customer First"
               ) : (
                 <>
                   <FileText className="w-4 h-4" />
-                  {isActualAdmin && orderForMode !== "self" ? "Submit On Behalf Of" : "Submit & Generate Invoice"}
+                  {isActualAdmin && orderForMode !== "self"
+                    ? "Submit On Behalf Of"
+                    : documentMode === "QUOTE"
+                      ? "Submit Quote Request"
+                      : "Submit & Generate Invoice"}
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -533,7 +653,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-[10px] text-slate-550 space-y-2 leading-normal font-semibold uppercase">
               <div className="flex gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-700 flex-shrink-0" />
-                <span>Submitting generates an official invoice for payment and an equipment packing slip instantly.</span>
+                <span>{documentMode === "QUOTE" ? "Submitting creates a quote request. Freight can be added later before approval." : "Submitting generates an official invoice for payment and an equipment packing slip instantly."}</span>
               </div>
               <div className="flex gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-700 flex-shrink-0" />

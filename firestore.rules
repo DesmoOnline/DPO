@@ -70,32 +70,64 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // 4. Orders Collection Rules
+    // 4. Rate Break Profiles Collection Rules
+    match /rateBreakProfiles/{profileId} {
+      // Approved customers can read profiles assigned to them; admins can read all
+      allow get: if isAdmin() || (
+        isApproved() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('rateBreakProfileId') == profileId
+      );
+      
+      // Customers can list profiles to see available options (admin view)
+      allow list: if isAdmin() || isApproved();
+      
+      // Only admins can create/update/delete rate break profiles
+      allow write: if isAdmin();
+    }
+
+    // 4b. Weight Break Templates Collection Rules
+    match /weightBreakTemplates/{templateId} {
+      // Approved customers can read templates; admins can read all
+      allow get: if isApproved() || isAdmin();
+      allow list: if isApproved() || isAdmin();
+      
+      // Only admins can create/update/delete weight break templates
+      allow write: if isAdmin();
+    }
+
+    // 5. Orders Collection Rules
     match /orders/{orderId} {
       // Customers can read their own orders; admins can read all orders
       allow get: if isAdmin() || (isApproved() && resource.data.customerId == request.auth.uid);
       allow list: if isAdmin() || (isApproved() && resource.data.customerId == request.auth.uid);
       
-      // Creating an order: Admins can create for anyone; approved customers can create for themselves
+      // Creating an order: Admins can create for anyone; approved customers can create quotes or invoices for themselves
       allow create: if isAdmin() || (
         isApproved() && 
         request.resource.data.customerId == request.auth.uid &&
-        request.resource.data.status in ["pending_approval", "approved", "pending_payment"]
+        request.resource.data.documentType in ["QUOTE", "INVOICE"] &&
+        request.resource.data.status in ["pending_approval", "approved", "pending_payment", "quote_requested"]
       );
         
-      // Updating an order: Admin can change status (paid/shipped). Customers cannot edit their orders once placed.
+      // Updating an order: Admin can change status (paid/shipped). Customers can accept finalized quotes.
       allow update: if isAdmin() || (
         isApproved() && 
         resource.data.customerId == request.auth.uid &&
-        resource.data.status == "pending_payment" &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'notes']) &&
-        request.resource.data.status == "cancelled"
+        (
+          (resource.data.documentType == "QUOTE" &&
+           resource.data.status == "quote_finalized" &&
+           request.resource.data.status in ["approved", "declined"] &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedAt'])) ||
+          (resource.data.status == "pending_payment" &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'notes']) &&
+           request.resource.data.status == "cancelled")
+        )
       );
       
       allow delete: if isAdmin();
     }
 
-    // 5. Settings Collection Rules
+    // 6. Settings Collection Rules
     match /settings/{settingId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
