@@ -38,10 +38,13 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isSignedIn();
       
-      // Creating a profile: Status MUST be pending on self-registration
-      allow create: if isSignedIn() && isOwner(userId) && 
-        request.resource.data.status == "pending" &&
-        request.resource.data.email == request.auth.token.email;
+      // Creating a profile: Status MUST be pending on self-registration unless admin
+      allow create: if isSignedIn() && isOwner(userId) && (
+        isAdmin() || (
+          request.resource.data.status == "pending" &&
+          request.resource.data.email == request.auth.token.email
+        )
+      );
         
       // Updating a profile: Admin can update anything. Owner can update company name, but cannot approve themselves or change custom pricing.
       allow update: if isAdmin() || (
