@@ -1,0 +1,110 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,900;1,900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom clean, crisp and professional styling overrides */
+.brutalist-border {
+  border: 1px solid #e2e8f0; /* slate-200 */
+  border-radius: 0.75rem; /* rounded-xl */
+}
+
+.brutalist-border-thin {
+  border: 1px solid #f1f5f9; /* slate-100 */
+  border-radius: 0.5rem; /* rounded-lg */
+}
+
+.brutalist-shadow {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+}
+
+.brutalist-shadow-orange {
+  box-shadow: 0 4px 12px -2px rgba(37, 99, 235, 0.15); /* blue glow instead of orange */
+}
+
+.brutalist-shadow-lg {
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+}
+
+.brutalist-btn {
+  background-color: #0f172a; /* slate-900 */
+  color: #ffffff;
+  border: 1px solid #1e293b;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.brutalist-btn:hover {
+  background-color: #1e293b;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.brutalist-btn-orange {
+  background-color: #2563eb; /* royal blue primary */
+  color: #ffffff;
+  border: 1px solid #2563eb;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.brutalist-btn-orange:hover {
+  background-color: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px -2px rgba(37, 99, 235, 0.25);
+}
+
+.brutalist-input {
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1; /* slate-300 */
+  color: #0f172a;
+  font-weight: 500;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.375rem;
+  outline: none;
+  transition: all 0.15s ease-in-out;
+}
+
+.brutalist-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.brutalist-badge {
+  border: 1px solid #cbd5e1;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  background-color: #f8fafc;
+}
+
+/* Global scrollbar style for professional look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+

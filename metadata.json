@@ -1,0 +1,6 @@
+{
+  "name": "Desmo Products Wholesale Portal",
+  "description": "Wholesale ordering portal for Desmo Products with client-specific custom pricing, dynamic quantity breaks, automated invoices, packing slips, and GST tax reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
