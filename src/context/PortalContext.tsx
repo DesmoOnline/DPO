@@ -91,6 +91,7 @@ interface PortalContextType {
   addCategory: (category: string) => Promise<void>;
   deleteCategory: (category: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: Order["status"]) => Promise<void>;
+  updateOrderDispatch: (orderId: string, dispatch: { freightCompany: string; consignmentNote: string; packingStatus: "Packed" | "Hold" }) => Promise<void>;
   approveOrder: (orderId: string) => Promise<void>;
   declineOrder: (orderId: string) => Promise<void>;
   addShippingCharge: (orderId: string, shippingCharge: number) => Promise<void>;
@@ -1142,6 +1143,18 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const updateOrderDispatch = async (orderId: string, dispatch: { freightCompany: string; consignmentNote: string; packingStatus: "Packed" | "Hold" }) => {
+    if (!isAdmin && isFirebase) return;
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await updateDoc(doc(db, "orders", orderId), dispatch);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
+      }
+    }
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...dispatch } : o));
+  };
+
   const approveOrder = async (orderId: string) => {
     if (!isAdmin && isFirebase) return;
 
@@ -1295,6 +1308,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addCategory,
         deleteCategory,
         updateOrderStatus,
+        updateOrderDispatch,
         approveOrder,
         declineOrder,
         addShippingCharge,

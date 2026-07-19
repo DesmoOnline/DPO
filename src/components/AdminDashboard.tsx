@@ -350,7 +350,7 @@ export const AdminDashboard: React.FC = () => {
             : tab === "company"
               ? "Company Details"
               : tab === "customers" 
-                ? `Customers (${customers.filter(c => c.email !== "lew@desmoproducts.com.au").length})` 
+                ? `Customers (${customers.filter(c => !["lew@desmoproducts.com.au", "1@1.com"].includes(c.email)).length})` 
                 : "Products";
           const icon = tab === "accounting" 
             ? <TrendingUp className="w-4 h-4" /> 
@@ -645,18 +645,42 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Company Logo (Base64/URL)</label>
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Company Logo</label>
                 <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={csForm.logoBase64 || ""}
-                    onChange={(e) => setCsForm(prev => ({ ...prev, logoBase64: e.target.value }))}
-                    placeholder="data:image/png;base64,... or https://"
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
-                  />
+                  <div className="flex-1 space-y-2">
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg, image/webp"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              setCsForm(prev => ({ ...prev, logoBase64: event.target?.result as string }));
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        title="Upload Logo"
+                      />
+                      <div className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium flex items-center justify-center gap-2 hover:bg-slate-100 transition cursor-pointer">
+                        <Upload className="w-4 h-4 text-blue-600" />
+                        <span className="text-slate-600">Click to upload logo (PNG/JPG)</span>
+                      </div>
+                    </div>
+                    <input
+                      type="text"
+                      value={csForm.logoBase64 || ""}
+                      onChange={(e) => setCsForm(prev => ({ ...prev, logoBase64: e.target.value }))}
+                      placeholder="...or paste Base64 / URL directly"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-[10px] text-slate-800 font-mono focus:border-blue-500 outline-none"
+                    />
+                  </div>
                   {csForm.logoBase64 && (
-                    <div className="w-10 h-10 border border-slate-200 rounded-lg overflow-hidden flex-shrink-0 bg-white flex items-center justify-center">
-                      <img src={csForm.logoBase64} alt="Logo preview" className="max-w-full max-h-full object-contain p-1" />
+                    <div className="w-16 h-16 border border-slate-200 rounded-lg overflow-hidden flex-shrink-0 bg-white flex items-center justify-center p-1">
+                      <img src={csForm.logoBase64} alt="Logo preview" className="max-w-full max-h-full object-contain" />
                     </div>
                   )}
                 </div>
@@ -744,7 +768,7 @@ export const AdminDashboard: React.FC = () => {
 
             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
               {customers
-                .filter(c => c.email !== "lew@desmoproducts.com.au")
+                .filter(c => !["lew@desmoproducts.com.au", "1@1.com"].includes(c.email))
                 .map((customer) => {
                   const isSelected = selectedCustomerId === customer.id;
                   return (

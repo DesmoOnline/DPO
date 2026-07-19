@@ -186,7 +186,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
                 onChange={(e) => setAdminViewMode(e.target.value as any)}
                 className="text-[10px] font-bold font-mono bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-700 focus:outline-none focus:border-blue-500 shadow-sm cursor-pointer uppercase"
               >
-                <option value="admin">Admin (Lew)</option>
+                <option value="admin">Admin View</option>
                 <option value="customer">Customer View</option>
               </select>
             </div>

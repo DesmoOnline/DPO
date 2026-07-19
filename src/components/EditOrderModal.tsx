@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { usePortal } from "../context/PortalContext";
-import { Order, CartItem, Product } from "../types";
+import { Order, OrderItem, Product } from "../types";
 import { X, Plus, Trash2, Save, ShoppingCart, Truck } from "lucide-react";
 
 interface EditOrderModalProps {
@@ -13,7 +13,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderId, onClose
   const order = orders.find(o => o.id === orderId);
   const customer = order ? customers.find(c => c.id === order.customerId) : null;
 
-  const [items, setItems] = useState<CartItem[]>([]);
+  const [items, setItems] = useState<OrderItem[]>([]);
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [ownTransport, setOwnTransport] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState("");
@@ -156,7 +156,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderId, onClose
                     <tr key={item.sku} className="hover:bg-slate-50/50">
                       <td className="px-4 py-3 font-bold text-slate-800">{item.sku}</td>
                       <td className="px-4 py-3 text-slate-600 truncate max-w-[200px]" title={item.productName}>{item.productName}</td>
-                      <td className="px-4 py-3 text-right text-slate-700">${item.price.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">${item.price?.toFixed(2) || '0.00'}</td>
                       <td className="px-4 py-3 text-center">
                         <input
                           type="number"
@@ -202,7 +202,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderId, onClose
                 >
                   <option value="">Select a product to add...</option>
                   {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.sku} - {p.name} (${p.price.toFixed(2)})</option>
+                    <option key={p.id} value={p.id}>{p.sku} - {p.name} (${p.price?.toFixed(2) || '0.00'})</option>
                   ))}
                 </select>
               </div>

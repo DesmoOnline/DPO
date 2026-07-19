@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { usePortal } from "../context/PortalContext";
 import { Order } from "../types";
-import { Search, FileText, Truck, Calendar, DollarSign, Filter, ShieldAlert, CheckCircle, XCircle, Ban, Pencil, Package } from "lucide-react";
+import { Search, FileText, Truck, Calendar, DollarSign, Filter, ShieldAlert, CheckCircle, XCircle, Ban, Pencil, Package, ClipboardList } from "lucide-react";
 import { EditOrderModal } from "./EditOrderModal";
 
 interface OrdersListViewProps {
@@ -10,7 +10,7 @@ interface OrdersListViewProps {
 }
 
 export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, onViewPackingSlip }) => {
-  const { orders, isAdmin, currentUser, approveOrder, declineOrder, updateOrderStatus, addShippingCharge } = usePortal();
+  const { orders, isAdmin, currentUser, approveOrder, declineOrder, updateOrderStatus, updateOrderDispatch, addShippingCharge } = usePortal();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -21,6 +21,28 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
 
   // Edit order modal state
   const [editModalOrderId, setEditModalOrderId] = useState<string | null>(null);
+
+  // Freight modal state (shown before navigating to packing slip)
+  const [freightModalOrderId, setFreightModalOrderId] = useState<string | null>(null);
+  const [freightCompany, setFreightCompany] = useState("Team Global Express");
+  const [consignmentNote, setConsignmentNote] = useState("");
+  const [freightSubmitting, setFreightSubmitting] = useState(false);
+
+  const handleFreightSubmit = async () => {
+    if (!freightModalOrderId) return;
+    setFreightSubmitting(true);
+    const existingOrder = orders.find(o => o.id === freightModalOrderId);
+    await updateOrderDispatch(freightModalOrderId, {
+      freightCompany,
+      consignmentNote,
+      packingStatus: existingOrder?.packingStatus || "Hold"
+    });
+    setFreightSubmitting(false);
+    const id = freightModalOrderId;
+    setFreightModalOrderId(null);
+    setConsignmentNote("");
+    onViewPackingSlip(id);
+  };
 
   const filteredOrders = orders.filter(order => {
     // Search filter
@@ -293,7 +315,12 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                         {isAdmin && (
                           <button
                             id={`view_slip_${order.id}`}
-                            onClick={() => onViewPackingSlip(order.id)}
+                            onClick={() => {
+                              const o = orders.find(x => x.id === order.id);
+                              setFreightCompany(o?.freightCompany || "Team Global Express");
+                              setConsignmentNote(o?.consignmentNote || "");
+                              setFreightModalOrderId(order.id);
+                            }}
                             className="border border-slate-200 bg-slate-800 hover:bg-slate-900 text-white py-1.5 px-3 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1"
                             title="View Packing Slip"
                           >
@@ -377,6 +404,70 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Freight Company Modal */}
+      {freightModalOrderId && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setFreightModalOrderId(null)}>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xl p-6 w-full max-w-md mx-4 space-y-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+              <ClipboardList className="w-5 h-5 text-blue-600" />
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider font-mono">Freight Details</h3>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-[10px] font-mono text-slate-600">
+              Invoice: <strong>{freightModalOrderId}</strong>
+              {(() => {
+                const ord = orders.find(o => o.id === freightModalOrderId);
+                return ord ? (<><br />Company: <strong>{ord.companyName}</strong></>) : null;
+              })()}
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase font-mono tracking-wider block">Freight Company:</label>
+              <select
+                id="freight_company_select"
+                value={freightCompany}
+                onChange={(e) => setFreightCompany(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+              >
+                <option value="Team Global Express">Team Global Express</option>
+                <option value="Aust Post">Aust Post</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase font-mono tracking-wider block">Consignment Note No. (optional):</label>
+              <input
+                id="consignment_note_input"
+                type="text"
+                placeholder="e.g. 7EZ123456789"
+                value={consignmentNote}
+                onChange={(e) => setConsignmentNote(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setFreightModalOrderId(null); setConsignmentNote(""); }}
+                className="flex-1 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm"
+              >
+                Cancel
+              </button>
+              <button
+                id="freight_submit_btn"
+                onClick={handleFreightSubmit}
+                disabled={freightSubmitting}
+                className="flex-1 bg-slate-800 hover:bg-slate-900 text-white py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+              >
+                {freightSubmitting ? (
+                  <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                ) : (
+                  <Truck className="w-3.5 h-3.5" />
+                )}
+                Open Packing Slip
+              </button>
+            </div>
           </div>
         </div>
       )}

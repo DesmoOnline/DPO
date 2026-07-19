@@ -94,5 +94,11 @@ service cloud.firestore {
       
       allow delete: if isAdmin();
     }
+
+    // 5. Settings Collection Rules
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
   }
 }

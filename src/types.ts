@@ -62,6 +62,9 @@ export interface Order {
   ownTransport?: boolean;
   shippingCharge?: number;
   deliveryAddress?: string; // The selected delivery address for this specific order
+  freightCompany?: string;
+  consignmentNote?: string;
+  packingStatus?: "Packed" | "Hold";
 }
 
 export interface CompanySettings {
