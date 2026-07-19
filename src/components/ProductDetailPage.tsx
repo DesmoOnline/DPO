@@ -19,6 +19,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
   const [qty, setQty] = useState(1);
   const [calcQty, setCalcQty] = useState(10);
   const [justAdded, setJustAdded] = useState(false);
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
 
   const product = products.find(p => p.id === productId);
 
@@ -90,7 +91,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
   };
 
   const handleAddToCart = () => {
-    addToCart(product, qty);
+    addToCart(product, qty, product.colors ? selectedColors : undefined);
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 2000);
   };

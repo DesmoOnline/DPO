@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { usePortal } from "../context/PortalContext";
-import { Trash2, ShoppingCart, ShoppingBag, ArrowRight, FileText, CheckCircle } from "lucide-react";
+import { Trash2, ShoppingCart, ShoppingBag, ArrowRight, FileText, CheckCircle, Users, UserPlus, Truck } from "lucide-react";
 import { ProductPlaceholderImage } from "./ProductPlaceholderImage";
 
 interface CartViewProps {
@@ -14,14 +14,29 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
     currentUser, 
     updateCartQty, 
     removeFromCart, 
-    placeOrder 
+    placeOrder,
+    isActualAdmin,
+    customers
   } = usePortal();
 
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ownTransport, setOwnTransport] = useState(false);
 
-  if (!currentUser || currentUser.status !== "approved") {
+  // Admin on-behalf-of state
+  const [orderForMode, setOrderForMode] = useState<"self" | "registered" | "manual">("self");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [manualName, setManualName] = useState("");
+  const [manualEmail, setManualEmail] = useState("");
+  const [manualCompany, setManualCompany] = useState("");
+
+  // Approved customers for the dropdown (exclude the admin themselves)
+  const approvedCustomers = customers.filter(
+    c => c.status === "approved" && c.id !== currentUser?.id
+  );
+
+  if (!currentUser || (!isActualAdmin && currentUser.status !== "approved")) {
     return (
       <div className="bg-white border border-slate-200 p-10 text-center shadow-sm rounded-xl" id="cart_unauthorized">
         <ShoppingCart className="w-12 h-12 text-blue-600 mx-auto mb-4" />
@@ -57,16 +72,27 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
       : prod.baseWholesalePrice;
     
     let discountPercent = 0;
+    let finalPricePerUnit = originalPrice;
+    let isFixedDiscount = false;
+
     if (prod.quantityBreaks && prod.quantityBreaks.length > 0) {
       const matchedBreak = [...prod.quantityBreaks]
         .sort((a,b) => b.minQty - a.minQty)
         .find(qb => item.qty >= qb.minQty);
       if (matchedBreak) {
-        discountPercent = matchedBreak.discountPercent;
+        if (matchedBreak.discountType === "fixed") {
+          finalPricePerUnit = matchedBreak.discountValue;
+          isFixedDiscount = true;
+        } else if (matchedBreak.discountType === "percentage") {
+          discountPercent = matchedBreak.discountValue;
+          finalPricePerUnit = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
+        } else if (matchedBreak.discountPercent !== undefined) {
+          discountPercent = matchedBreak.discountPercent;
+          finalPricePerUnit = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
+        }
       }
     }
 
-    const finalPricePerUnit = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
     const totalLineAmount = Number((finalPricePerUnit * item.qty).toFixed(2));
 
     return {
@@ -74,8 +100,10 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
       qty: item.qty,
       originalPrice,
       discountPercent,
+      isFixedDiscount,
       finalPricePerUnit,
-      totalLineAmount
+      totalLineAmount,
+      selectedColors: item.selectedColors
     };
   });
 
@@ -83,11 +111,46 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
   const gstAmount = Number((subtotal * 0.10).toFixed(2));
   const totalAmount = Number((subtotal + gstAmount).toFixed(2));
 
+  // Build the onBehalfOf parameter for admin orders
+  const getOnBehalfOf = () => {
+    if (!isActualAdmin || orderForMode === "self") return undefined;
+
+    if (orderForMode === "registered" && selectedCustomerId) {
+      const cust = customers.find(c => c.id === selectedCustomerId);
+      if (!cust) return undefined;
+      return {
+        customerId: cust.id,
+        customerEmail: cust.email,
+        companyName: cust.companyName,
+        customPricing: cust.customPricing
+      };
+    }
+
+    if (orderForMode === "manual" && manualEmail.trim() && manualCompany.trim()) {
+      return {
+        customerId: `walk-in-${Date.now()}`,
+        customerEmail: manualEmail.trim(),
+        companyName: manualCompany.trim()
+      };
+    }
+
+    return undefined;
+  };
+
+  const canSubmit = () => {
+    if (!isActualAdmin) return true;
+    if (orderForMode === "self") return true;
+    if (orderForMode === "registered") return !!selectedCustomerId;
+    if (orderForMode === "manual") return !!(manualEmail.trim() && manualCompany.trim());
+    return false;
+  };
+
   const handleSubmitOrder = async () => {
     setIsSubmitting(true);
     setError(null);
     try {
-      const order = await placeOrder(notes);
+      const onBehalfOf = getOnBehalfOf();
+      const order = await placeOrder(notes, onBehalfOf, ownTransport);
       onOrderCompleted(order.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to place wholesale order. Please try again.");
@@ -113,73 +176,59 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
             </div>
 
             <div className="divide-y divide-slate-100">
-              {processedItems.map((item) => (
-                <div key={item.product.id} id={`cart_item_${item.product.id}`} className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 hover:bg-slate-50/50 transition">
+              {processedItems.map((item, idx) => (
+                <div key={item.product.id + "-" + idx} id={`cart_item_${item.product.id}`} className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 hover:bg-slate-50/50 transition">
                   {/* Left: Product Info */}
-                  <div className="flex items-center gap-4">
-                    <div className="w-20 h-20 rounded-lg overflow-hidden bg-slate-900 border border-slate-200 relative flex-shrink-0">
-                      <ProductPlaceholderImage
-                        sku={item.product.sku}
-                        name={item.product.name}
-                        category={item.product.category}
-                      />
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="w-16 h-16 bg-slate-100 border border-slate-200 overflow-hidden flex-shrink-0 rounded-lg">
+                      {item.product.imageUrl && (item.product.imageUrl.startsWith("data:") || item.product.imageUrl.startsWith("http")) ? (
+                        <img src={item.product.imageUrl} alt={item.product.name} className="w-full h-full object-contain" />
+                      ) : (
+                        <ProductPlaceholderImage name={item.product.name} />
+                      )}
                     </div>
-                    <div className="space-y-1.5">
-                      <h4 className="text-sm font-bold text-slate-800 hover:text-blue-600 tracking-tight">{item.product.name}</h4>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] font-mono text-slate-600 bg-slate-100 px-2 py-0.5 uppercase font-semibold rounded">
-                          {item.product.sku}
-                        </span>
-                        {item.discountPercent > 0 && (
-                          <span className="bg-emerald-50 text-emerald-700 text-[9px] font-mono font-bold px-2 py-0.5 uppercase border border-emerald-200 rounded">
-                            ★ -{item.discountPercent}% bulk tier
-                          </span>
-                        )}
-                      </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-800 truncate">{item.product.name}</p>
+                      <p className="text-[10px] text-slate-500 font-mono font-semibold uppercase mt-0.5">SKU: {item.product.sku}</p>
+                      {item.selectedColors && item.selectedColors.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {item.selectedColors.map(c => (
+                            <span key={c} className="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold uppercase">{c}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Right: Quantity picker and price calculation */}
-                  <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto border-t sm:border-t-0 border-slate-100 pt-4 sm:pt-0">
-                    {/* Quantity Selector */}
-                    <div className="flex items-center border border-slate-200 bg-slate-50 rounded-lg shadow-sm font-mono">
-                      <button 
-                        id={`cart_qty_dec_${item.product.id}`}
+                  {/* Middle: Qty & Price */}
+                  <div className="flex items-center gap-6">
+                    <div className="flex items-center border border-slate-200 bg-slate-50 rounded-lg shadow-sm">
+                      <button
+                        className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 transition text-sm font-bold"
                         onClick={() => updateCartQty(item.product.id, item.qty - 1)}
-                        className="px-3 text-slate-700 hover:bg-slate-200/50 font-bold transition text-sm py-1 border-r border-slate-200"
-                      >
-                        -
-                      </button>
-                      <input 
-                        id={`cart_qty_input_${item.product.id}`}
+                      >−</button>
+                      <input
                         type="number"
                         min="1"
                         value={item.qty}
                         onChange={(e) => updateCartQty(item.product.id, parseInt(e.target.value) || 1)}
-                        className="w-10 text-center bg-transparent border-none text-xs font-semibold text-slate-700 outline-none focus:ring-0"
+                        className="w-12 text-center bg-transparent border-none text-xs font-semibold text-slate-700 py-1.5 outline-none focus:ring-0 font-mono"
                       />
-                      <button 
-                        id={`cart_qty_inc_${item.product.id}`}
+                      <button
+                        className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 transition text-sm font-bold"
                         onClick={() => updateCartQty(item.product.id, item.qty + 1)}
-                        className="px-3 text-slate-700 hover:bg-slate-200/50 font-bold transition text-sm py-1 border-l border-slate-200"
-                      >
-                        +
-                      </button>
+                      >+</button>
                     </div>
 
-                    {/* Unit & Line totals */}
-                    <div className="text-right font-mono min-w-[120px]">
-                      <span className="text-[9px] text-slate-400 block uppercase font-semibold">Unit price:</span>
-                      <div className="flex items-center justify-end gap-1.5">
-                        {item.discountPercent > 0 && (
-                          <span className="text-[10px] text-slate-400 line-through">
-                            ${item.originalPrice.toFixed(2)}
-                          </span>
-                        )}
-                        <span className="text-slate-800 text-xs font-bold">
-                          ${item.finalPricePerUnit.toFixed(2)}
+                    <div className="text-right min-w-[100px]">
+                      <span className="text-[10px] text-slate-400 font-mono font-semibold uppercase block">
+                        ${item.finalPricePerUnit.toFixed(2)} /ea
+                      </span>
+                      {(item.discountPercent > 0 || item.isFixedDiscount) && (
+                        <span className="text-[9px] font-mono text-emerald-600 font-semibold uppercase block">
+                          {item.isFixedDiscount ? "Fixed Rate" : `${item.discountPercent}% Break`}
                         </span>
-                      </div>
+                      )}
                       <span className="text-blue-600 text-xs font-bold block mt-0.5">
                         ${item.totalLineAmount.toFixed(2)} AUD
                       </span>
@@ -212,11 +261,129 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
               onChange={(e) => setNotes(e.target.value)}
               className="w-full bg-white border border-slate-250 rounded-lg p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition min-h-[90px] font-medium"
             />
+
+            {/* Own Transport Checkbox */}
+            <div className="flex items-center gap-3 mt-4 bg-white border border-slate-200 rounded-lg p-3">
+              <input
+                id="own_transport_chk"
+                type="checkbox"
+                checked={ownTransport}
+                onChange={(e) => setOwnTransport(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+              />
+              <label htmlFor="own_transport_chk" className="flex items-center gap-2 cursor-pointer select-none">
+                <Truck className="w-4 h-4 text-teal-600" />
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">Own Transport</span>
+                <span className="text-[10px] text-slate-500 font-medium">— Customer will arrange their own pickup / delivery</span>
+              </label>
+            </div>
           </div>
         </div>
 
         {/* Right 1 Column: Summary */}
         <div className="space-y-4">
+          {/* Admin: Order For selector */}
+          {isActualAdmin && (
+            <div className="bg-white border border-blue-200 p-5 space-y-4 shadow-sm rounded-xl" id="admin_order_for_panel">
+              <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+                <Users className="w-4 h-4 text-blue-600" />
+                <h3 className="text-xs font-bold text-slate-800 font-mono uppercase tracking-wider">Place Order For</h3>
+              </div>
+
+              {/* Mode selector tabs */}
+              <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg">
+                {([
+                  { value: "self" as const, label: "Myself" },
+                  { value: "registered" as const, label: "Customer" },
+                  { value: "manual" as const, label: "New Contact" }
+                ]).map(tab => (
+                  <button
+                    key={tab.value}
+                    onClick={() => setOrderForMode(tab.value)}
+                    className={`text-[10px] font-bold uppercase tracking-wider py-2 rounded-md transition ${
+                      orderForMode === tab.value
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-white"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Self mode info */}
+              {orderForMode === "self" && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-[10px] font-mono text-slate-600">
+                  Order will be placed under <strong>{currentUser.companyName}</strong> ({currentUser.email})
+                </div>
+              )}
+
+              {/* Registered customer dropdown */}
+              {orderForMode === "registered" && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase font-mono tracking-wider block">Select Approved Customer:</label>
+                  <select
+                    id="admin_customer_select"
+                    value={selectedCustomerId}
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                  >
+                    <option value="">— Choose a customer —</option>
+                    {approvedCustomers.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.companyName} ({c.email})
+                      </option>
+                    ))}
+                  </select>
+                  {selectedCustomerId && (() => {
+                    const sc = customers.find(c => c.id === selectedCustomerId);
+                    return sc ? (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-[10px] font-mono text-blue-800 space-y-0.5">
+                        <p><strong>Company:</strong> {sc.companyName}</p>
+                        <p><strong>Email:</strong> {sc.email}</p>
+                        <p><strong>Status:</strong> <span className="text-emerald-700">{sc.status}</span></p>
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+              )}
+
+              {/* Manual entry for non-registered */}
+              {orderForMode === "manual" && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-1.5 text-[10px] text-amber-600 font-bold uppercase font-mono">
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Enter customer details manually
+                  </div>
+                  <input
+                    id="manual_company"
+                    type="text"
+                    placeholder="Company / Contact Name *"
+                    value={manualCompany}
+                    onChange={(e) => setManualCompany(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition font-medium"
+                  />
+                  <input
+                    id="manual_email"
+                    type="email"
+                    placeholder="Email Address *"
+                    value={manualEmail}
+                    onChange={(e) => setManualEmail(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition font-medium"
+                  />
+                  <input
+                    id="manual_name"
+                    type="text"
+                    placeholder="Contact Person Name (Optional)"
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition font-medium"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="bg-white border border-slate-200 p-6 space-y-6 shadow-sm rounded-xl">
             <h3 className="text-sm font-semibold text-slate-800 font-mono uppercase tracking-wider border-b border-slate-200 pb-3">
               Wholesale Invoice Summary
@@ -249,7 +416,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
             <button
               id="submit_wholesale_order_btn"
               onClick={handleSubmitOrder}
-              disabled={isSubmitting}
+              disabled={isSubmitting || !canSubmit()}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold uppercase tracking-widest text-xs py-3.5 rounded-lg transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
@@ -260,10 +427,12 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
                   </svg>
                   Processing Invoice...
                 </>
+              ) : !canSubmit() ? (
+                "Select Customer First"
               ) : (
                 <>
                   <FileText className="w-4 h-4" />
-                  Submit & Generate Invoice
+                  {isActualAdmin && orderForMode !== "self" ? "Submit On Behalf Of" : "Submit & Generate Invoice"}
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

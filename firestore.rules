@@ -76,10 +76,12 @@ service cloud.firestore {
       allow get: if isAdmin() || (isApproved() && resource.data.customerId == request.auth.uid);
       allow list: if isAdmin() || (isApproved() && resource.data.customerId == request.auth.uid);
       
-      // Creating an order: Must be approved customer, setting themselves as customerId
-      allow create: if isApproved() && 
+      // Creating an order: Admins can create for anyone; approved customers can create for themselves
+      allow create: if isAdmin() || (
+        isApproved() && 
         request.resource.data.customerId == request.auth.uid &&
-        request.resource.data.status == "pending_payment";
+        request.resource.data.status in ["pending_approval", "approved", "pending_payment"]
+      );
         
       // Updating an order: Admin can change status (paid/shipped). Customers cannot edit their orders once placed.
       allow update: if isAdmin() || (

@@ -29,7 +29,10 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
     isFirebaseConfigured, 
     setPortalMode,
     resetDemoData,
-    customers
+    customers,
+    isActualAdmin,
+    adminViewMode,
+    setAdminViewMode
   } = usePortal();
 
   // Persona switcher has been replaced by LoginView
@@ -146,31 +149,47 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
         )}
 
         {/* Login status */}
-        <div className="flex items-center gap-3">
-          {currentUser ? (
-            <>
-              <div className="flex flex-col items-end">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Logged In As:</span>
-                <span className="text-xs font-semibold text-slate-700">{currentUser.email}</span>
-              </div>
+        <div className="flex flex-col gap-2 items-end">
+          <div className="flex items-center gap-3">
+            {currentUser ? (
+              <>
+                <div className="flex flex-col items-end">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider font-mono">Logged In As:</span>
+                  <span className="text-xs font-semibold text-slate-700">{currentUser.email}</span>
+                </div>
+                <button
+                  id="header_logout_btn"
+                  onClick={logout}
+                  className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-650 hover:text-slate-900 border border-slate-200 transition rounded-lg shadow-sm flex items-center gap-1.5"
+                  title="Log Out Current Session"
+                >
+                  <LogOut className="w-4 h-4 font-bold" />
+                  <span className="text-xs font-bold uppercase">Log Out</span>
+                </button>
+              </>
+            ) : (
               <button
-                id="header_logout_btn"
-                onClick={logout}
-                className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-650 hover:text-slate-900 border border-slate-200 transition rounded-lg shadow-sm flex items-center gap-1.5"
-                title="Log Out Current Session"
+                onClick={() => setActiveTab("login")}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white transition rounded-lg shadow-sm flex items-center gap-2 font-bold uppercase tracking-wider text-xs"
               >
-                <LogOut className="w-4 h-4 font-bold" />
-                <span className="text-xs font-bold uppercase">Log Out</span>
+                <User className="w-4 h-4" />
+                Log In
               </button>
-            </>
-          ) : (
-            <button
-              onClick={() => setActiveTab("login")}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white transition rounded-lg shadow-sm flex items-center gap-2 font-bold uppercase tracking-wider text-xs"
-            >
-              <User className="w-4 h-4" />
-              Log In
-            </button>
+            )}
+          </div>
+          {isActualAdmin && currentUser && (
+            <div className="flex items-center gap-1.5" id="admin_persona_switcher">
+              <span className="text-[10px] text-slate-400 font-mono font-bold uppercase">View As:</span>
+              <select
+                id="admin_view_mode_select"
+                value={adminViewMode}
+                onChange={(e) => setAdminViewMode(e.target.value as any)}
+                className="text-[10px] font-bold font-mono bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-700 focus:outline-none focus:border-blue-500 shadow-sm cursor-pointer uppercase"
+              >
+                <option value="admin">Admin (Lew)</option>
+                <option value="customer">Customer View</option>
+              </select>
+            </div>
           )}
         </div>
       </div>

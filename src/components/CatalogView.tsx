@@ -21,6 +21,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [qtyPicker, setQtyPicker] = useState<{ [productId: string]: number }>({});
   const [justAdded, setJustAdded] = useState<{ [productId: string]: boolean }>({});
+  const [selectedColorsState, setSelectedColorsState] = useState<{ [productId: string]: string[] }>({});
 
   const categories = ["All", ...Array.from(new Set(products.map(p => p.category || "General"))) as string[]];
 
@@ -63,7 +64,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
 
   const handleAddToCart = (product: Product) => {
     const qty = qtyPicker[product.id] || 1;
-    addToCart(product, qty);
+    const colors = product.colors ? (selectedColorsState[product.id] || []) : undefined;
+    addToCart(product, qty, colors);
     
     // Trigger animation feedback
     setJustAdded(prev => ({ ...prev, [product.id]: true }));
@@ -89,7 +91,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
           <button
             id="register_now_btn"
             onClick={onOpenRegistration}
-            className="brutalist-btn-orange whitespace-nowrap"
+            className="bg-orange-600 hover:bg-orange-700 text-white font-semibold text-xs py-2.5 px-4 rounded-lg transition shadow-sm whitespace-nowrap"
           >
             Create Wholesale Account
           </button>
@@ -170,7 +172,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
 
       {/* Products Grid */}
       {visibleProducts.length === 0 ? (
-        <div className="text-center py-20 bg-white brutalist-border brutalist-shadow-lg w-full" id="no_products_found">
+        <div className="text-center py-20 bg-white border border-slate-200 rounded-xl shadow-md w-full" id="no_products_found">
           <ShieldAlert className="w-12 h-12 text-orange-600 mx-auto mb-4" />
           <h3 className="text-xl font-black uppercase tracking-tighter text-black">No Wholesale Parts Found</h3>
           <p className="text-slate-600 text-xs font-mono mt-2 uppercase font-bold tracking-wide">No components match your search or filter criteria.</p>
@@ -185,18 +187,33 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
 
             const qty = qtyPicker[product.id] || 1;
 
-            // Calculate current discount percent for selected quantity
+            // Calculate current discount and unit price for selected quantity
             let activeDiscountPercent = 0;
+            let discountedPrice = activePrice;
+            let isFixedDiscount = false;
+
             if (product.quantityBreaks && product.quantityBreaks.length > 0) {
               const matchedBreak = [...product.quantityBreaks]
                 .sort((a,b) => b.minQty - a.minQty)
                 .find(qb => qty >= qb.minQty);
               if (matchedBreak) {
-                activeDiscountPercent = matchedBreak.discountPercent;
+                if (matchedBreak.discountType === "fixed") {
+                  discountedPrice = matchedBreak.discountValue;
+                  isFixedDiscount = true;
+                } else if (matchedBreak.discountType === "percentage") {
+                  activeDiscountPercent = matchedBreak.discountValue;
+                  discountedPrice = Number((activePrice * (1 - activeDiscountPercent / 100)).toFixed(2));
+                } else if (matchedBreak.discountPercent !== undefined) {
+                  activeDiscountPercent = matchedBreak.discountPercent;
+                  discountedPrice = Number((activePrice * (1 - activeDiscountPercent / 100)).toFixed(2));
+                }
               }
             }
 
-            const discountedPrice = Number((activePrice * (1 - activeDiscountPercent / 100)).toFixed(2));
+            const stock = product.stock ?? 0;
+            const allowBackorders = product.allowBackorders ?? true;
+            const isOutOfStock = stock <= 0 && !allowBackorders;
+            const isBackorderOnly = stock <= 0 && allowBackorders;
 
             return (
               <div 
@@ -206,11 +223,19 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
               >
                 {/* Image Section with restricted indicator */}
                 <div className="relative aspect-video bg-slate-900 border-b border-slate-200 overflow-hidden group">
-                  <ProductPlaceholderImage
-                    sku={product.sku}
-                    name={product.name}
-                    category={product.category}
-                  />
+                  {product.imageUrl && product.imageUrl.startsWith("data:image") ? (
+                    <img 
+                      src={product.imageUrl} 
+                      className="w-full h-full object-cover" 
+                      alt={product.name} 
+                    />
+                  ) : (
+                    <ProductPlaceholderImage
+                      sku={product.sku}
+                      name={product.name}
+                      category={product.category}
+                    />
+                  )}
                   {product.isRestricted && (
                     <div className="absolute top-3 right-3 bg-blue-600 text-white font-mono text-[9px] px-2.5 py-1 font-semibold uppercase tracking-wider rounded-md shadow-sm flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-white" />
@@ -233,6 +258,23 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
                     <p className="text-xs text-slate-500 leading-relaxed font-medium line-clamp-2">
                       {product.description}
                     </p>
+                    
+                    {/* Stock level indicators */}
+                    <div className="pt-1.5">
+                      {isOutOfStock ? (
+                        <span className="text-[10px] font-mono font-bold text-red-600 bg-red-50 border border-red-100 rounded-md px-2 py-0.5 uppercase">
+                          Out of Stock (0)
+                        </span>
+                      ) : isBackorderOnly ? (
+                        <span className="text-[10px] font-mono font-bold text-amber-600 bg-amber-50 border border-amber-100 rounded-md px-2 py-0.5 uppercase">
+                          Available on Backorder
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-md px-2 py-0.5 uppercase">
+                          In Stock {stock < 5 ? `(${stock})` : ""}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Pricing Matrix (Strict visibility checks) */}
@@ -245,7 +287,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
                     ) : (
                       <div>
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono text-slate-600 uppercase font-bold tracking-wider">Dealer Rate:</span>
+                          <span className="text-[10px] font-mono text-slate-660 uppercase font-bold tracking-wider">Dealer Rate:</span>
                           <div className="flex flex-col items-end font-mono">
                             {hasCustomPricing && (
                               <span className="text-[10px] text-slate-400 line-through">
@@ -266,9 +308,11 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
                         )}
 
                         {/* Current calculation including selected qty breaks */}
-                        {qty > 1 && activeDiscountPercent > 0 && (
+                        {qty > 1 && (activeDiscountPercent > 0 || isFixedDiscount) && (
                           <div className="border-t border-slate-200 mt-2 pt-2 flex items-center justify-between text-[11px] font-mono">
-                            <span className="text-slate-650 uppercase font-semibold">Qty Discount ({activeDiscountPercent}%):</span>
+                            <span className="text-slate-650 uppercase font-semibold">
+                              {isFixedDiscount ? "Fixed Break Rate:" : `Qty Discount (${activeDiscountPercent}%):`}
+                            </span>
                             <span className="text-emerald-700 font-bold">
                               ${discountedPrice.toFixed(2)} AUD /ea
                             </span>
@@ -286,10 +330,47 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
                         {product.quantityBreaks.map((qb, idx) => (
                           <div key={idx} className="bg-slate-50 text-slate-700 px-2.5 py-1.5 border border-slate-200 flex justify-between font-medium rounded-lg">
                             <span>Buy {qb.minQty}+</span>
-                            <span className="text-emerald-600 font-bold font-mono">-{qb.discountPercent}%</span>
+                            <span className="text-emerald-600 font-bold font-mono">
+                              {qb.discountType === "fixed" ? `$${qb.discountValue.toFixed(0)} ea` : `-${qb.discountValue}%`}
+                            </span>
                           </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Colors selector if available */}
+                  {isApproved && product.colors && product.colors.length > 0 && (
+                    <div className="space-y-2 border-t border-slate-150 pt-3">
+                      <span className="text-[9px] font-bold text-slate-505 uppercase tracking-widest font-mono block">Select Colors (Sold by Pack):</span>
+                      <div className="flex flex-wrap gap-1 max-h-[85px] overflow-y-auto border border-slate-200 p-2 rounded-lg bg-slate-50/50">
+                        {product.colors.map(color => {
+                          const isSelected = (selectedColorsState[product.id] || []).includes(color);
+                          return (
+                            <button
+                              key={color}
+                              type="button"
+                              onClick={() => {
+                                const current = selectedColorsState[product.id] || [];
+                                const updated = isSelected 
+                                  ? current.filter(c => c !== color) 
+                                  : [...current, color];
+                                setSelectedColorsState(prev => ({ ...prev, [product.id]: updated }));
+                              }}
+                              className={`text-[9px] px-1.5 py-0.5 font-bold uppercase border rounded transition ${
+                                isSelected
+                                  ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              {color}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {(selectedColorsState[product.id] || []).length === 0 && (
+                        <p className="text-[9px] text-amber-600 font-bold uppercase font-mono animate-pulse">* Please select at least one colour pack.</p>
+                      )}
                     </div>
                   )}
 
@@ -300,7 +381,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
                       onClick={() => onOpenProductDetail(product.id)}
                       className="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold uppercase text-xs tracking-wider transition rounded-lg py-2.5 px-3 flex items-center justify-center gap-1.5 flex-1 shadow-sm"
                     >
-                      <Eye className="w-4 h-4 text-slate-500" />
+                      <Eye className="w-4 h-4 text-slate-550" />
                       View
                     </button>
 
@@ -311,19 +392,24 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
                             id={`qty_input_${product.id}`}
                             type="number"
                             min="1"
+                            max={!allowBackorders ? stock : undefined}
+                            disabled={isOutOfStock}
                             value={qty}
                             onChange={(e) => handleQtyChange(product.id, parseInt(e.target.value) || 1)}
-                            className="w-10 text-center bg-transparent border-none text-xs font-semibold text-slate-700 py-2 outline-none focus:ring-0 font-mono"
+                            className="w-10 text-center bg-transparent border-none text-xs font-semibold text-slate-700 py-2 outline-none focus:ring-0 font-mono disabled:opacity-50"
                           />
                         </div>
 
                         <button
                           id={`add_to_cart_btn_${product.id}`}
                           onClick={() => handleAddToCart(product)}
-                          className={`flex-1 font-semibold text-xs py-2.5 px-3 uppercase tracking-wider border transition flex items-center justify-center gap-1.5 rounded-lg shadow-sm ${
+                          disabled={isOutOfStock || (product.colors && (selectedColorsState[product.id] || []).length === 0)}
+                          className={`flex-1 font-semibold text-xs py-2.5 px-3 uppercase tracking-wider border transition flex items-center justify-center gap-1.5 rounded-lg shadow-sm disabled:opacity-50 ${
                             justAdded[product.id] 
                               ? "bg-emerald-600 border-emerald-600 text-white" 
-                              : "bg-blue-600 border-blue-600 text-white hover:bg-blue-700"
+                              : (isOutOfStock || (product.colors && (selectedColorsState[product.id] || []).length === 0))
+                                ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
+                                : "bg-blue-600 border-blue-600 text-white hover:bg-blue-700"
                           }`}
                         >
                           {justAdded[product.id] ? (
@@ -331,6 +417,10 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenProductDetail, o
                               <Check className="w-4 h-4" />
                               Added
                             </>
+                          ) : isOutOfStock ? (
+                            "Sold Out"
+                          ) : (product.colors && (selectedColorsState[product.id] || []).length === 0) ? (
+                            "Pick Color"
                           ) : (
                             <>
                               <ShoppingCart className="w-4 h-4" />

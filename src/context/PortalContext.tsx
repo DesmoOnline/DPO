@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Product, CustomerProfile, Order, OrderItem, QuantityBreak } from "../types";
+import { Product, CustomerProfile, Order, OrderItem, QuantityBreak, CompanySettings } from "../types";
 import { isFirebaseAvailable, db, auth } from "../firebase";
 import { 
   collection, 
@@ -15,6 +15,7 @@ import {
   Timestamp
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
+import { generateInvoicePDF } from "../utils/pdfGenerator";
 
 // Error structure required by firebase-integration skill
 enum OperationType {
@@ -60,20 +61,22 @@ interface PortalContextType {
   products: Product[];
   customers: CustomerProfile[];
   orders: Order[];
-  cart: { product: Product; qty: number }[];
+  cart: { product: Product; qty: number; selectedColors?: string[] }[];
   
   // Auth actions
-  register: (email: string, companyName: string) => Promise<void>;
+  register: (email: string, companyName: string, deliveryAddress: string) => Promise<void>;
   logout: () => Promise<void>;
+  addDeliveryAddress: (customerId: string, address: string) => Promise<void>;
   
   // Cart actions
-  addToCart: (product: Product, qty: number) => void;
+  addToCart: (product: Product, qty: number, selectedColors?: string[]) => void;
   removeFromCart: (productId: string) => void;
   updateCartQty: (productId: string, qty: number) => void;
   clearCart: () => void;
   
   // Ordering
-  placeOrder: (notes?: string) => Promise<Order>;
+  placeOrder: (notes?: string, onBehalfOf?: { customerId: string; customerEmail: string; companyName: string; customPricing?: { [productId: string]: number } }, ownTransport?: boolean, deliveryAddress?: string) => Promise<Order>;
+  editOrder: (orderId: string, updatedItems: OrderItem[], deliveryAddress?: string) => Promise<void>;
   
   // Admin actions
   approveCustomer: (customerId: string) => Promise<void>;
@@ -83,14 +86,53 @@ interface PortalContextType {
   toggleRestrictedProductAccess: (customerId: string, productId: string) => Promise<void>;
   createProduct: (product: Omit<Product, "id">) => Promise<void>;
   updateProduct: (productId: string, product: Partial<Product>) => Promise<void>;
+  deleteProduct: (productId: string) => Promise<void>;
+  categories: string[];
+  addCategory: (category: string) => Promise<void>;
+  deleteCategory: (category: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: Order["status"]) => Promise<void>;
+  approveOrder: (orderId: string) => Promise<void>;
+  declineOrder: (orderId: string) => Promise<void>;
+  addShippingCharge: (orderId: string, shippingCharge: number) => Promise<void>;
   
+  // Settings
+  companySettings: CompanySettings;
+  updateCompanySettings: (settings: CompanySettings) => Promise<void>;
+
   // System overrides for testing
   setPortalMode: (isFirebaseMode: boolean) => void;
   resetDemoData: () => void;
+
+  // View modes
+  adminViewMode: "admin" | "customer";
+  setAdminViewMode: (mode: "admin" | "customer") => void;
+  isActualAdmin: boolean;
 }
 
 const PortalContext = createContext<PortalContextType | undefined>(undefined);
+
+const DEFAULT_CATEGORIES = [
+  "Digital Meters",
+  "Safety Compliance",
+  "Signal Analysis",
+  "High-Voltage Diagnostics",
+  "Component Analysis",
+  "General"
+];
+
+const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
+  tradingName: "Desmo Products Wholesale",
+  companyName: "Desmo Products Pty Ltd",
+  abn: "98 123 456 789",
+  address: "123 Industrial Way, Perth WA 6000",
+  email: "lew@desmoproducts.com.au",
+  paymentTerms: "14 Days",
+  bankName: "National Australia Bank (NAB)",
+  bsb: "082-124",
+  accountNo: "842-104-921",
+  accountName: "Desmo Products Wholesale",
+  orderPendingMessage: "Thank you for your wholesale request. Your order reference has been logged. Shipping costs will be calculated and added to this Invoice within 24 hours. Once confirmed, you will receive an approved invoice with bank deposit instructions to settle your account."
+};
 
 // Initial mock data to ensure the app is fully functional instantly
 const DEFAULT_PRODUCTS: Product[] = [
@@ -103,11 +145,12 @@ const DEFAULT_PRODUCTS: Product[] = [
     baseWholesalePrice: 150.00,
     isRestricted: false,
     quantityBreaks: [
-      { minQty: 10, discountPercent: 5 },
-      { minQty: 25, discountPercent: 12 }
+      { minQty: 10, discountType: "percentage", discountValue: 5 },
+      { minQty: 25, discountType: "percentage", discountValue: 12 }
     ],
     category: "Digital Meters",
-    stock: 120
+    stock: 120,
+    allowBackorders: true
   },
   {
     id: "DP-PAT-302",
@@ -118,11 +161,12 @@ const DEFAULT_PRODUCTS: Product[] = [
     baseWholesalePrice: 180.00,
     isRestricted: false,
     quantityBreaks: [
-      { minQty: 5, discountPercent: 5 },
-      { minQty: 10, discountPercent: 10 }
+      { minQty: 5, discountType: "percentage", discountValue: 5 },
+      { minQty: 10, discountType: "percentage", discountValue: 10 }
     ],
     category: "Safety Compliance",
-    stock: 45
+    stock: 45,
+    allowBackorders: false
   },
   {
     id: "DP-OSC-200",
@@ -133,10 +177,11 @@ const DEFAULT_PRODUCTS: Product[] = [
     baseWholesalePrice: 1250.00,
     isRestricted: true,
     quantityBreaks: [
-      { minQty: 2, discountPercent: 8 }
+      { minQty: 2, discountType: "fixed", discountValue: 1150.00 }
     ],
     category: "Signal Analysis",
-    stock: 5
+    stock: 5,
+    allowBackorders: true
   },
   {
     id: "DP-IRT-500",
@@ -147,10 +192,11 @@ const DEFAULT_PRODUCTS: Product[] = [
     baseWholesalePrice: 95.00,
     isRestricted: false,
     quantityBreaks: [
-      { minQty: 15, discountPercent: 15 }
+      { minQty: 15, discountType: "percentage", discountValue: 15 }
     ],
     category: "High-Voltage Diagnostics",
-    stock: 80
+    stock: 80,
+    allowBackorders: false
   },
   {
     id: "DP-CLP-600",
@@ -161,10 +207,11 @@ const DEFAULT_PRODUCTS: Product[] = [
     baseWholesalePrice: 340.00,
     isRestricted: true,
     quantityBreaks: [
-      { minQty: 10, discountPercent: 10 }
+      { minQty: 10, discountType: "percentage", discountValue: 10 }
     ],
     category: "Digital Meters",
-    stock: 12
+    stock: 12,
+    allowBackorders: true
   },
   {
     id: "DP-LCR-100",
@@ -175,11 +222,80 @@ const DEFAULT_PRODUCTS: Product[] = [
     baseWholesalePrice: 110.00,
     isRestricted: false,
     quantityBreaks: [
-      { minQty: 10, discountPercent: 8 },
-      { minQty: 25, discountPercent: 15 }
+      { minQty: 10, discountType: "percentage", discountValue: 8 },
+      { minQty: 25, discountType: "percentage", discountValue: 15 }
     ],
     category: "Component Analysis",
-    stock: 60
+    stock: 60,
+    allowBackorders: true
+  },
+  {
+    id: "LT240A15",
+    name: "CAT IV 600V Single Phase Loadtester",
+    sku: "LT240A15",
+    description: "The Loadtester is used as an electrical load on kWh power meters when testing to ensure the correct operation and functionality of the meters. Incorporates fused probes with silicon leads and is housed in a compact body. Protected by an automatic thermal cut-out switch.\n\nSpecifications:\nVoltage: 240 – 250V max. 1Ø\nLoad: 1100W – 4.5amp\nInternal Fusing: 7amp\nSafety Rating: Cat IV 600V – Cat III 1000V\nCompliant to: AS: 61010.1: 2003\nWeight: 420gm\nLeads: Silicon with internal white wear indicator layer\nTest Probes: Cat III 1000V\nMotor: 1100W with thermal cut-out\nGrills: Black Nylon 15% Glass Filled\nCable Grommet: TPE 90A Shore\nBody: PC-ABS Fire Retardant – spark finish\nHook: Polished 316 S/S that allows hands free operation.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 430.00,
+    isRestricted: false,
+    autoApprove: true,
+    category: "Safety Compliance",
+    stock: 50,
+    allowBackorders: true
+  },
+  {
+    id: "B400",
+    name: "400A LV Barrier",
+    sku: "B400",
+    description: "Insulated safety barrier used on the overhead network of the West Australian supply authority during switching and interconnection movements. Installed by hand or Hotstick onto the contact blade of a 400A Low Voltage isolator (disconnector) to prevent closure contact.\n\nSpecifications:\nWeight: 225gm\nMaterial: High Impact Polyethylene PVC\nLength: 310mm\nDiameter: 50mm\nAdapts to male Flowline fitting on standard Hotstick or Double Ended Fuse Extractor (FE2)",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 99.00,
+    isRestricted: false,
+    autoApprove: true,
+    category: "Safety Compliance",
+    stock: 100,
+    allowBackorders: true
+  },
+  {
+    id: "B600",
+    name: "600A LV Barrier",
+    sku: "B600",
+    description: "Insulated safety barrier used on the overhead network of the West Australian supply authority during switching and interconnection movements. Installed by hand or Hotstick onto the contact blade of a 600A Low Voltage isolator (disconnector) to prevent closure contact.\n\nSpecifications:\nWeight: 200gm\nMaterial: High Impact Polyethylene PVC\nLength: 275mm\nDiameter: 50mm\nAdapts to male Flowline fitting on standard Hotstick or Double Ended Fuse Extractor (FE2)",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 129.00,
+    isRestricted: false,
+    autoApprove: true,
+    category: "Safety Compliance",
+    stock: 100,
+    allowBackorders: true
+  },
+  {
+    id: "METERSEAL",
+    name: "KWh Meter Seals (Pack)",
+    sku: "METERSEAL",
+    description: "Polypropylene meter seals used as an anti-pilferage measure on KWh power meters by the Australian Supply Authorities. Can also be used for all types of sealing equipment and printed with flag symbol/logo if required.\n\nSpecifications:\nMaterial: Polypropylene\nLength: 235mm\nTag Size: 25mm x 12mm",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    colors: [
+      "Signal Orange",
+      "Green",
+      "Yellow",
+      "White",
+      "Beige",
+      "Red",
+      "Pink",
+      "Purple",
+      "L/ Blue",
+      "Grey",
+      "Brown",
+      "Blue",
+      "Black",
+      "Fluoro Orange"
+    ]
   }
 ];
 
@@ -203,7 +319,7 @@ const DEFAULT_CUSTOMERS: CustomerProfile[] = [
       "DP-DMM-401": 135.00, // Custom wholesale discount
       "DP-PAT-302": 160.00
     },
-    allowedProducts: ["DP-OSC-200"] // Can see restricted oscilloscope
+    allowedProducts: ["DP-OSC-200", "METERSEAL"] // Can see restricted oscilloscope & meter seals
   },
   {
     id: "sydney-power",
@@ -344,13 +460,17 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isFirebase, setIsFirebase] = useState<boolean>(true);
   const [currentUser, setCurrentUser] = useState<CustomerProfile | null>(null);
   const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS);
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [customers, setCustomers] = useState<CustomerProfile[]>(DEFAULT_CUSTOMERS);
   const [orders, setOrders] = useState<Order[]>(DEFAULT_ORDERS);
-  const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
+  const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
+  const [cart, setCart] = useState<{ product: Product; qty: number; selectedColors?: string[] }[]>([]);
+  const [adminViewMode, setAdminViewMode] = useState<"admin" | "customer">("admin");
 
   const adminEmails = ["lew@desmoproducts.com.au", "1@1.com"];
   const adminUids = ["rysSGhbaj8O7CIuZp0KiQsDUF", "FNmQiIOF1tccb2D1z7qfz2Vybgn2"];
-  const isAdmin = currentUser ? (adminEmails.includes(currentUser.email) || adminUids.includes(currentUser.id)) : false;
+  const isActualAdmin = currentUser ? (adminEmails.includes(currentUser.email) || adminUids.includes(currentUser.id)) : false;
+  const isAdmin = isActualAdmin && adminViewMode === "admin";
 
   // Load from local storage or set initial defaults
   useEffect(() => {
@@ -365,6 +485,10 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (localProds) setProducts(JSON.parse(localProds));
     else localStorage.setItem("dp_sandbox_products", JSON.stringify(DEFAULT_PRODUCTS));
+    
+    const savedCategories = localStorage.getItem("dp_sandbox_categories");
+    if (savedCategories) setCategories(JSON.parse(savedCategories));
+    else localStorage.setItem("dp_sandbox_categories", JSON.stringify(DEFAULT_CATEGORIES));
 
     if (localCusts) setCustomers(JSON.parse(localCusts));
     else localStorage.setItem("dp_sandbox_customers", JSON.stringify(DEFAULT_CUSTOMERS));
@@ -469,7 +593,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [isFirebase, currentUser?.id, isAdmin]);
 
   // Auth actions
-  const register = async (email: string, companyName: string) => {
+  const register = async (email: string, companyName: string, deliveryAddress: string) => {
     const formattedEmail = email.trim().toLowerCase();
     
     if (isFirebase && isFirebaseAvailable) {
@@ -480,7 +604,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           status: "pending",
           createdAt: new Date().toISOString(),
           customPricing: {},
-          allowedProducts: []
+          allowedProducts: [],
+          deliveryAddresses: [deliveryAddress]
         };
         // In real Firebase, doc ID matches auth UID, but we can generate or add
         const docRef = await addDoc(collection(db, "users"), newUserProfile);
@@ -505,7 +630,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         status: "pending",
         createdAt: new Date().toISOString(),
         customPricing: {},
-        allowedProducts: []
+        allowedProducts: [],
+        deliveryAddresses: [deliveryAddress]
       };
       
       setCustomers(prev => [...prev, profile]);
@@ -557,16 +683,63 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCart([]);
   };
 
+  const addDeliveryAddress = async (customerId: string, address: string) => {
+    if (!address.trim()) return;
+    
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        const customerRef = doc(db, "users", customerId);
+        const snap = await getDoc(customerRef);
+        if (snap.exists()) {
+          const currentAddrs = snap.data().deliveryAddresses || [];
+          if (!currentAddrs.includes(address.trim())) {
+            await updateDoc(customerRef, { deliveryAddresses: [...currentAddrs, address.trim()] });
+          }
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${customerId}`);
+      }
+    } else {
+      setCustomers(prev => {
+        const next = prev.map(c => {
+          if (c.id === customerId) {
+            const addrs = c.deliveryAddresses || [];
+            if (!addrs.includes(address.trim())) {
+              return { ...c, deliveryAddresses: [...addrs, address.trim()] };
+            }
+          }
+          return c;
+        });
+        localStorage.setItem("dp_sandbox_customers", JSON.stringify(next));
+        return next;
+      });
+      // also update current user if it matches
+      if (currentUser?.id === customerId) {
+        setCurrentUser(prev => {
+          if (!prev) return null;
+          const addrs = prev.deliveryAddresses || [];
+          if (!addrs.includes(address.trim())) {
+            return { ...prev, deliveryAddresses: [...addrs, address.trim()] };
+          }
+          return prev;
+        });
+      }
+    }
+  };
+
   // Cart actions
-  const addToCart = (product: Product, qty: number) => {
+  const addToCart = (product: Product, qty: number, selectedColors?: string[]) => {
     setCart(prev => {
-      const existingIdx = prev.findIndex(item => item.product.id === product.id);
+      const existingIdx = prev.findIndex(item => 
+        item.product.id === product.id && 
+        JSON.stringify(item.selectedColors || []) === JSON.stringify(selectedColors || [])
+      );
       if (existingIdx > -1) {
         const nextCart = [...prev];
         nextCart[existingIdx].qty += qty;
         return nextCart;
       }
-      return [...prev, { product, qty }];
+      return [...prev, { product, qty, selectedColors }];
     });
   };
 
@@ -585,21 +758,37 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const clearCart = () => setCart([]);
 
   // Place Order (Submit Invoice and Packing Slip)
-  const placeOrder = async (notes?: string) => {
+  const placeOrder = async (
+    notes?: string, 
+    onBehalfOf?: { customerId: string; customerEmail: string; companyName: string; customPricing?: { [productId: string]: number } },
+    ownTransport?: boolean,
+    deliveryAddress?: string
+  ): Promise<Order> => {
     if (!currentUser) throw new Error("Authentication required to place orders");
-    if (currentUser.status !== "approved") throw new Error("Your account must be approved to order");
+    // Admins can place on behalf of others; regular users must be approved
+    if (!isActualAdmin && currentUser.status !== "approved") throw new Error("Your account must be approved to order");
     if (cart.length === 0) throw new Error("Your cart is empty");
+
+    // Determine the effective customer for this order
+    const effectiveCustomer = onBehalfOf || {
+      customerId: currentUser.id,
+      customerEmail: currentUser.email,
+      companyName: currentUser.companyName,
+      customPricing: currentUser.customPricing
+    };
 
     // Map cart to OrderItems calculating custom prices and qty breaks
     const orderItems: OrderItem[] = cart.map(item => {
       const prod = item.product;
       // 1. Get original price (custom overrides base wholesale)
-      const originalPrice = (currentUser.customPricing && currentUser.customPricing[prod.id] !== undefined)
-        ? currentUser.customPricing[prod.id]
+      const originalPrice = (effectiveCustomer.customPricing && effectiveCustomer.customPricing[prod.id] !== undefined)
+        ? effectiveCustomer.customPricing[prod.id]
         : prod.baseWholesalePrice;
       
-      // 2. Find applicable quantity break
+      // 2. Find applicable quantity break and compute unit price
       let discountPercent = 0;
+      let finalPricePerUnit = originalPrice;
+      
       if (prod.quantityBreaks && prod.quantityBreaks.length > 0) {
         // Sort descending to find highest matched threshold
         const matchedBreak = [...prod.quantityBreaks]
@@ -607,11 +796,19 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .find(qb => item.qty >= qb.minQty);
         
         if (matchedBreak) {
-          discountPercent = matchedBreak.discountPercent;
+          if (matchedBreak.discountType === "fixed") {
+            finalPricePerUnit = matchedBreak.discountValue;
+          } else if (matchedBreak.discountType === "percentage") {
+            discountPercent = matchedBreak.discountValue;
+            finalPricePerUnit = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
+          } else if (matchedBreak.discountPercent !== undefined) {
+            // Fallback for legacy breaks
+            discountPercent = matchedBreak.discountPercent;
+            finalPricePerUnit = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
+          }
         }
       }
 
-      const finalPricePerUnit = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
       const totalLineAmount = Number((finalPricePerUnit * item.qty).toFixed(2));
 
       return {
@@ -622,7 +819,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         originalPrice,
         appliedDiscountPercent: discountPercent,
         finalPricePerUnit,
-        totalLineAmount
+        totalLineAmount,
+        ...(item.selectedColors && item.selectedColors.length > 0 ? { selectedColors: item.selectedColors } : {})
       };
     });
 
@@ -632,18 +830,26 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const nextInvoiceNumber = `INV-${Math.floor(1000 + Math.random() * 9000)}`;
 
+    const allAutoApproved = cart.every(item => item.product.autoApprove === true);
+    let initialStatus: Order["status"] = allAutoApproved ? "approved" : "pending_approval";
+    if (!ownTransport) {
+      initialStatus = "pending_approval";
+    }
+
     const newOrder: Order = {
       id: nextInvoiceNumber,
-      customerId: currentUser.id,
-      customerEmail: currentUser.email,
-      companyName: currentUser.companyName,
+      customerId: effectiveCustomer.customerId,
+      customerEmail: effectiveCustomer.customerEmail,
+      companyName: effectiveCustomer.companyName,
       items: orderItems,
       subtotal,
       gstAmount,
       totalAmount,
-      status: "pending_payment",
+      status: initialStatus,
       createdAt: new Date().toISOString(),
-      notes
+      ...(notes ? { notes } : {}),
+      ...(ownTransport !== undefined ? { ownTransport } : {}),
+      ...(deliveryAddress ? { deliveryAddress } : {})
     };
 
     if (isFirebase && isFirebaseAvailable) {
@@ -657,9 +863,65 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setOrders(prev => [newOrder, ...prev]);
     }
 
+    if (initialStatus === "approved") {
+      try {
+        const pdf = generateInvoicePDF(newOrder);
+        const dataUri = pdf.output("datauristring");
+        const pdfBase64 = dataUri.split(",")[1];
+        fetch("/api/send-invoice-email", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            to: newOrder.customerEmail,
+            subject: `Invoice from Desmo Products Online - ${newOrder.id}`,
+            body: `Dear customer,\n\nPlease find attached your tax invoice (${newOrder.id}) for your wholesale order with Desmo Products Online.\n\nTotal Amount: $${newOrder.totalAmount.toFixed(2)} AUD\n\nPlease settle payment within 14 days via bank deposit.\n\nThank you,\nDesmo Products HQ`,
+            pdfBase64,
+            filename: `invoice_${newOrder.id}.pdf`
+          }),
+        }).catch(err => console.error("Auto email invoice failed", err));
+      } catch (e) {
+        console.error("Auto invoice PDF generation failed", e);
+      }
+    }
+
     // Clear cart and return order
     clearCart();
     return newOrder;
+  };
+
+  const editOrder = async (orderId: string, updatedItems: OrderItem[], newDeliveryAddress?: string) => {
+    if (!isAdmin && isFirebase) return;
+    
+    // Recalculate totals
+    const subtotal = Number(updatedItems.reduce((acc, item) => acc + item.totalLineAmount, 0).toFixed(2));
+    const gstAmount = Number((subtotal * 0.10).toFixed(2));
+    const totalAmount = Number((subtotal + gstAmount).toFixed(2));
+
+    const updates: Partial<Order> = {
+      items: updatedItems,
+      subtotal,
+      gstAmount,
+      totalAmount,
+    };
+    if (newDeliveryAddress !== undefined) {
+      updates.deliveryAddress = newDeliveryAddress;
+    }
+
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await updateDoc(doc(db, "orders", orderId), updates as any);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
+      }
+    } else {
+      setOrders(prev => {
+        const next = prev.map(o => o.id === orderId ? { ...o, ...updates } : o);
+        localStorage.setItem("dp_sandbox_orders", JSON.stringify(next));
+        return next;
+      });
+    }
   };
 
   // Admin Actions
@@ -821,6 +1083,44 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const deleteProduct = async (productId: string) => {
+    if (!isActualAdmin) return;
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await deleteDoc(doc(db, "products", productId));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `products/${productId}`);
+      }
+    } else {
+      setProducts(prev => {
+        const next = prev.filter(p => p.id !== productId);
+        localStorage.setItem("dp_sandbox_products", JSON.stringify(next));
+        return next;
+      });
+      setCart(prev => prev.filter(item => item.product.id !== productId));
+    }
+  };
+
+  const addCategory = async (category: string) => {
+    if (!isActualAdmin || !category.trim()) return;
+    const cat = category.trim();
+    if (categories.includes(cat)) return;
+    setCategories(prev => {
+      const next = [...prev, cat];
+      localStorage.setItem("dp_sandbox_categories", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const deleteCategory = async (category: string) => {
+    if (!isActualAdmin) return;
+    setCategories(prev => {
+      const next = prev.filter(c => c !== category);
+      localStorage.setItem("dp_sandbox_categories", JSON.stringify(next));
+      return next;
+    });
+  };
+
   const updateOrderStatus = async (orderId: string, status: Order["status"]) => {
     if (!isAdmin && isFirebase) return;
 
@@ -839,6 +1139,102 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     } else {
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
+    }
+  };
+
+  const approveOrder = async (orderId: string) => {
+    if (!isAdmin && isFirebase) return;
+
+    const orderToApprove = orders.find(o => o.id === orderId);
+    if (!orderToApprove) return;
+
+    const updates: Partial<Order> = { status: "approved" };
+
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await updateDoc(doc(db, "orders", orderId), updates);
+        
+        // Deduct stock for each item in the order
+        for (const item of orderToApprove.items) {
+          const productRef = doc(db, "products", item.productId);
+          const productSnap = await getDoc(productRef);
+          if (productSnap.exists()) {
+            const currentStock = productSnap.data().stock || 0;
+            const newStock = currentStock - item.qty;
+            await updateDoc(productRef, { stock: newStock });
+          }
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
+      }
+    } else {
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
+      setProducts(prevProducts => prevProducts.map(p => {
+        const orderItem = orderToApprove.items.find(item => item.productId === p.id);
+        if (orderItem) {
+          const currentStock = p.stock || 0;
+          return { ...p, stock: currentStock - orderItem.qty };
+        }
+        return p;
+      }));
+    }
+  };
+
+  const declineOrder = async (orderId: string) => {
+    if (!isAdmin && isFirebase) return;
+    const updates: Partial<Order> = { status: "declined" };
+
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await updateDoc(doc(db, "orders", orderId), updates);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
+      }
+    } else {
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
+    }
+  };
+
+  const addShippingCharge = async (orderId: string, shippingCharge: number) => {
+    if (!isActualAdmin) return;
+
+    const orderToUpdate = orders.find(o => o.id === orderId);
+    if (!orderToUpdate) return;
+
+    const newSubtotal = Number((orderToUpdate.items.reduce((acc, item) => acc + item.totalLineAmount, 0) + shippingCharge).toFixed(2));
+    const newGst = Number((newSubtotal * 0.10).toFixed(2));
+    const newTotal = Number((newSubtotal + newGst).toFixed(2));
+
+    const updates: Partial<Order> = {
+      shippingCharge,
+      subtotal: newSubtotal,
+      gstAmount: newGst,
+      totalAmount: newTotal
+    };
+
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await updateDoc(doc(db, "orders", orderId), updates);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
+      }
+    } else {
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
+    }
+  };
+
+  const updateCompanySettings = async (settings: CompanySettings) => {
+    if (!isAdmin && isFirebase) return;
+    
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await setDoc(doc(db, "settings", "company"), settings);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, `settings/company`);
+      }
+    } else {
+      setCompanySettings(settings);
+      localStorage.setItem("dp_sandbox_company_settings", JSON.stringify(settings));
     }
   };
 
@@ -886,6 +1282,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateCartQty,
         clearCart,
         placeOrder,
+        editOrder,
         approveCustomer,
         rejectCustomer,
         updateCustomerPricing,
@@ -893,9 +1290,21 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         toggleRestrictedProductAccess,
         createProduct,
         updateProduct,
+        deleteProduct,
+        categories,
+        addCategory,
+        deleteCategory,
         updateOrderStatus,
+        approveOrder,
+        declineOrder,
+        addShippingCharge,
+        companySettings,
+        updateCompanySettings,
         setPortalMode,
-        resetDemoData
+        resetDemoData,
+        adminViewMode,
+        setAdminViewMode,
+        isActualAdmin
       }}
     >
       {children}

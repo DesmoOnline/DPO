@@ -1,7 +1,8 @@
 import React from "react";
 import { usePortal } from "../context/PortalContext";
 import { Order } from "../types";
-import { ArrowLeft, Printer, Truck, FileText } from "lucide-react";
+import { ArrowLeft, Printer, Truck, FileText, FileDown } from "lucide-react";
+import { generatePackingSlipPDF } from "../utils/pdfGenerator";
 
 interface PackingSlipDetailProps {
   orderId: string;
@@ -29,6 +30,11 @@ export const PackingSlipDetail: React.FC<PackingSlipDetailProps> = ({ orderId, o
     window.print();
   };
 
+  const handleDownloadPDF = () => {
+    const pdf = generatePackingSlipPDF(order);
+    pdf.save(`packingslip_${order.id}.pdf`);
+  };
+
   return (
     <div className="space-y-8" id="packing_slip_view_container">
       {/* Navigation */}
@@ -50,6 +56,15 @@ export const PackingSlipDetail: React.FC<PackingSlipDetailProps> = ({ orderId, o
           >
             <FileText className="w-4 h-4 text-blue-600" />
             View Tax Invoice
+          </button>
+
+          <button
+            id="download_pack_slip_pdf_btn"
+            onClick={handleDownloadPDF}
+            className="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1.5 font-mono"
+          >
+            <FileDown className="w-4 h-4 text-blue-600" />
+            Download PDF
           </button>
           
           <button

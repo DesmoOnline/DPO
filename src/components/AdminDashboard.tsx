@@ -5,18 +5,13 @@ import {
   Users, 
   Wrench, 
   TrendingUp, 
-  Clipboard, 
-  Plus, 
   Check, 
   X, 
-  Edit3, 
-  Percent, 
-  ShieldAlert, 
-  FileSpreadsheet, 
-  ArrowRight,
-  Shield,
-  HelpCircle,
-  Copy
+  Shield, 
+  Copy,
+  Plus,
+  Trash2,
+  Download
 } from "lucide-react";
 
 export const AdminDashboard: React.FC = () => {
@@ -30,14 +25,17 @@ export const AdminDashboard: React.FC = () => {
     removeCustomerPricing, 
     toggleRestrictedProductAccess,
     createProduct,
-    updateProduct,
-    updateOrderStatus
+    deleteProduct,
+    categories,
+    addCategory,
+    deleteCategory
   } = usePortal();
 
   const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products">("accounting");
 
   // Filter ranges for tax data
   const [dateRange, setDateRange] = useState<"30days" | "3months" | "fy">("fy");
+  const [reportSortBy, setReportSortBy] = useState<"customer" | "week" | "month" | "quarter" | "fy">("customer");
 
   // CRM State
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -50,9 +48,17 @@ export const AdminDashboard: React.FC = () => {
   const [newProdPrice, setNewProdPrice] = useState(100);
   const [newProdRestricted, setNewProdRestricted] = useState(false);
   const [newProdCategory, setNewProdCategory] = useState("Digital Meters");
-  const [newProdQbQty, setNewProdQbQty] = useState(10);
-  const [newProdQbDisc, setNewProdQbDisc] = useState(5);
-  const [newProdQtyBreaks, setNewProdQtyBreaks] = useState<{ minQty: number; discountPercent: number }[]>([]);
+  const [newProdStock, setNewProdStock] = useState(50);
+  const [newProdAllowBackorders, setNewProdAllowBackorders] = useState(true);
+  const [newProdAutoApprove, setNewProdAutoApprove] = useState(false);
+  
+  const [newProdQbValueType, setNewProdQbValueType] = useState<"percentage" | "fixed">("percentage");
+  const [newProdQbValue, setNewProdQbValue] = useState(5);
+  const [newProdQtyBreaks, setNewProdQtyBreaks] = useState<QuantityBreak[]>([]);
+  const [newCategoryName, setNewCategoryName] = useState("");
+
+  // Preview loaded local files
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
 
   // Feedback states
   const [pricingInputValues, setPricingInputValues] = useState<{ [customerId_productId: string]: string }>({});
@@ -64,8 +70,14 @@ export const AdminDashboard: React.FC = () => {
   const getFilteredOrders = (): Order[] => {
     const now = new Date();
     return orders.filter(order => {
-      // Exclude cancelled invoices
-      if (order.status === "cancelled") return false;
+      // ONLY include confirmed orders (approved, paid, shipped)
+      if (
+        order.status === "pending_approval" || 
+        order.status === "declined" || 
+        order.status === "cancelled"
+      ) {
+        return false;
+      }
       
       const orderDate = new Date(order.createdAt);
       if (dateRange === "30days") {
@@ -75,20 +87,21 @@ export const AdminDashboard: React.FC = () => {
         const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
         return orderDate >= threeMonthsAgo;
       }
-      return true; // Full Fiscal Year
+      return true; // Full FY / history
     });
   };
 
   const currentFilteredOrders = getFilteredOrders();
 
-  const calculateGSTReport = (): GSTReportData => {
+  const calculateGSTReport = () => {
     let totalRevenue = 0;
     let totalGST = 0;
     let totalSubtotal = 0;
     let paidOrderCount = 0;
     let pendingOrderCount = 0;
 
-    const byCustomer: { [companyName: string]: { subtotal: number; gst: number; total: number; count: number } } = {};
+    // Dynamic ledger based on reportSortBy
+    const ledger: { [key: string]: { subtotal: number; gst: number; total: number; count: number } } = {};
     const byMonth: { [month: string]: { subtotal: number; gst: number; total: number } } = {};
 
     currentFilteredOrders.forEach(order => {
@@ -97,19 +110,36 @@ export const AdminDashboard: React.FC = () => {
       totalSubtotal += order.subtotal;
 
       if (order.status === "paid" || order.status === "shipped") paidOrderCount++;
-      else if (order.status === "pending_payment") pendingOrderCount++;
+      else pendingOrderCount++;
 
-      // Breakdown by customer
-      if (!byCustomer[order.companyName]) {
-        byCustomer[order.companyName] = { subtotal: 0, gst: 0, total: 0, count: 0 };
-      }
-      byCustomer[order.companyName].subtotal += order.subtotal;
-      byCustomer[order.companyName].gst += order.gstAmount;
-      byCustomer[order.companyName].total += order.totalAmount;
-      byCustomer[order.companyName].count += 1;
-
-      // Breakdown by month
+      // Compute dynamic ledger grouping key
+      let key = order.companyName; // Default "customer"
       const date = new Date(order.createdAt);
+      
+      if (reportSortBy === "week") {
+        const startOfWeek = new Date(date);
+        startOfWeek.setDate(date.getDate() - date.getDay());
+        key = `Week of ${startOfWeek.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+      } else if (reportSortBy === "month") {
+        key = date.toLocaleString('en-AU', { month: 'long', year: 'numeric' });
+      } else if (reportSortBy === "quarter") {
+        const q = Math.floor(date.getMonth() / 3) + 1;
+        key = `Q${q} ${date.getFullYear()}`;
+      } else if (reportSortBy === "fy") {
+        const year = date.getFullYear();
+        const isSecondHalf = date.getMonth() >= 6; // July-June fiscal year
+        key = isSecondHalf ? `FY ${year}/${year + 1}` : `FY ${year - 1}/${year}`;
+      }
+
+      if (!ledger[key]) {
+        ledger[key] = { subtotal: 0, gst: 0, total: 0, count: 0 };
+      }
+      ledger[key].subtotal += order.subtotal;
+      ledger[key].gst += order.gstAmount;
+      ledger[key].total += order.totalAmount;
+      ledger[key].count += 1;
+
+      // Breakdown by month for graph
       const monthKey = date.toLocaleString('en-AU', { month: 'short', year: 'numeric' });
       if (!byMonth[monthKey]) {
         byMonth[monthKey] = { subtotal: 0, gst: 0, total: 0 };
@@ -126,7 +156,7 @@ export const AdminDashboard: React.FC = () => {
       orderCount: currentFilteredOrders.length,
       paidOrderCount,
       pendingOrderCount,
-      byCustomer,
+      ledger,
       byMonth
     };
   };
@@ -134,15 +164,20 @@ export const AdminDashboard: React.FC = () => {
   const report = calculateGSTReport();
 
   // Export BAS CSV Data to Clipboard
+  // Export BAS CSV Data to Clipboard
   const handleCopyBasData = () => {
-    // Generate simple readable CSV for bookkeeping pasting
-    let csv = "Invoice Number,Date,Customer,Subtotal (ex. GST),GST Collected (10%),Gross Total (AUD),Status\n";
-    currentFilteredOrders.forEach(o => {
-      csv += `${o.id},${new Date(o.createdAt).toLocaleDateString('en-AU')},"${o.companyName}",${o.subtotal.toFixed(2)},${o.gstAmount.toFixed(2)},${o.totalAmount.toFixed(2)},${o.status.toUpperCase()}\n`;
-    });
-
-    csv += `\nSUMMARY,Net Sales Total,GST Liability (1/11),Gross Receipts\n`;
-    csv += `,${report.totalSubtotal.toFixed(2)},${report.totalGST.toFixed(2)},${report.totalRevenue.toFixed(2)}\n`;
+    let csv = "";
+    if (reportSortBy === "customer") {
+      csv = "Customer/Company,Orders Count,Subtotal (ex. GST),GST Collected (10%),Gross Total (AUD)\n";
+      Object.entries(report.ledger).forEach(([key, val]) => {
+        csv += `"${key}",${val.count},${val.subtotal.toFixed(2)},${val.gst.toFixed(2)},${val.total.toFixed(2)}\n`;
+      });
+    } else {
+      csv = "Period,Invoices Count,Subtotal (ex. GST),GST Collected (10%),Gross Total (AUD)\n";
+      Object.entries(report.ledger).forEach(([key, val]) => {
+        csv += `"${key}",${val.count},${val.subtotal.toFixed(2)},${val.gst.toFixed(2)},${val.total.toFixed(2)}\n`;
+      });
+    }
 
     navigator.clipboard.writeText(csv);
     setBasCopied(true);
@@ -150,17 +185,61 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const handleAddQtyBreak = () => {
-    if (newProdQbQty <= 1 || newProdQbDisc < 1) return;
+    if (newProdQbQty <= 1 || newProdQbValue < 1) return;
     setNewProdQtyBreaks(prev => [
       ...prev, 
-      { minQty: newProdQbQty, discountPercent: newProdQbDisc }
+      { 
+        minQty: newProdQbQty, 
+        discountType: newProdQbValueType, 
+        discountValue: newProdQbValue 
+      }
     ].sort((a,b) => a.minQty - b.minQty));
     setNewProdQbQty(10);
-    setNewProdQbDisc(5);
+    setNewProdQbValue(5);
   };
 
   const handleRemoveQtyBreak = (index: number) => {
     setNewProdQtyBreaks(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 600;
+        const MAX_HEIGHT = 650;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        const base64 = canvas.toDataURL("image/jpeg", 0.7);
+        setNewProdImg(base64);
+        setImagePreviewUrl(base64);
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleCreateProductSubmit = (e: React.FormEvent) => {
@@ -174,20 +253,44 @@ export const AdminDashboard: React.FC = () => {
       imageUrl: newProdImg || "placeholder",
       baseWholesalePrice: Number(newProdPrice),
       isRestricted: newProdRestricted,
+      autoApprove: newProdAutoApprove,
       category: newProdCategory,
       quantityBreaks: newProdQtyBreaks,
-      stock: 50
+      stock: Number(newProdStock),
+      allowBackorders: newProdAllowBackorders
     });
 
-    // Reset states
     setNewProdName("");
     setNewProdSku("");
     setNewProdDesc("");
     setNewProdImg("");
+    setImagePreviewUrl(null);
     setNewProdPrice(100);
     setNewProdRestricted(false);
+    setNewProdAutoApprove(false);
+    setNewProdStock(50);
+    setNewProdAllowBackorders(true);
     setNewProdQtyBreaks([]);
-    alert("Wholesale equipment created successfully!");
+    setNewProdAutoApprove(false);
+  };
+
+  const handleExportBackup = () => {
+    const backupData = {
+      timestamp: new Date().toISOString(),
+      products,
+      customers,
+      orders,
+      categories
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `desmo-backup-${new Date().toISOString().split("T")[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleUpdatePriceOverride = (customerId: string, productId: string) => {
@@ -205,123 +308,140 @@ export const AdminDashboard: React.FC = () => {
   return (
     <div className="space-y-8" id="admin_dashboard_container">
       {/* Top Banner */}
-      <div className="bg-orange-50 border-4 border-black p-6 rounded-none flex items-center justify-between brutalist-shadow-lg">
-        <div>
-          <div className="inline-flex items-center gap-1.5 bg-black text-white text-[10px] font-mono px-3 py-1 uppercase tracking-widest font-black border border-black">
-            Owner Console Secure
+      <div className="bg-white border border-slate-200 p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm rounded-xl" id="admin_dashboard_header">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-1.5 bg-blue-600 text-white text-[11px] font-bold px-3 py-1 uppercase tracking-wider rounded-full">
+            Secure Admin Area
           </div>
-          <h2 className="text-2xl font-black text-black mt-2 uppercase tracking-tight">Desmo Products Administrator</h2>
-          <p className="text-xs text-slate-700 font-mono font-bold uppercase mt-1">
+          <h2 className="text-3xl font-extrabold tracking-tight leading-tight text-slate-900 mt-1">
+            Desmo Products Administrator
+          </h2>
+          <p className="text-sm text-slate-650 max-w-2xl leading-relaxed font-medium">
             Manage custom dealer accounts, establish contract pricing structures, and evaluate monthly GST liabilities.
           </p>
         </div>
-        <Shield className="w-10 h-10 text-orange-600 hidden sm:block" />
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={handleExportBackup}
+            className="hidden sm:flex items-center gap-2 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold py-2 px-4 rounded-lg text-xs uppercase tracking-wider transition shadow-sm"
+          >
+            <Download className="w-4 h-4" />
+            Backup Data
+          </button>
+          <Shield className="w-10 h-10 text-blue-600 hidden md:block" />
+        </div>
       </div>
 
       {/* Segment Selector tabs */}
-      <div className="flex border-b-4 border-black gap-2" id="admin_tab_selector">
-        <button
-          id="admin_tab_accounting"
-          onClick={() => { setActiveSubTab("accounting"); setSelectedCustomerId(null); }}
-          className={`flex items-center gap-2 px-5 py-3 text-xs font-black font-mono transition-all border-2 border-b-0 uppercase tracking-wider ${
-            activeSubTab === "accounting"
-              ? "bg-black text-white border-black"
-              : "bg-white text-black border-black hover:bg-slate-50"
-          }`}
-        >
-          <TrendingUp className="w-4 h-4" />
-          Bookkeeping & GST
-        </button>
-
-        <button
-          id="admin_tab_customers"
-          onClick={() => setActiveSubTab("customers")}
-          className={`flex items-center gap-2 px-5 py-3 text-xs font-black font-mono transition-all border-2 border-b-0 uppercase tracking-wider ${
-            activeSubTab === "customers"
-              ? "bg-black text-white border-black"
-              : "bg-white text-black border-black hover:bg-slate-50"
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          Dealers ({customers.filter(c => c.email !== "lew@desmoproducts.com.au").length})
-        </button>
-
-        <button
-          id="admin_tab_products"
-          onClick={() => { setActiveSubTab("products"); setSelectedCustomerId(null); }}
-          className={`flex items-center gap-2 px-5 py-3 text-xs font-black font-mono transition-all border-2 border-b-0 uppercase tracking-wider ${
-            activeSubTab === "products"
-              ? "bg-black text-white border-black"
-              : "bg-white text-black border-black hover:bg-slate-50"
-          }`}
-        >
-          <Wrench className="w-4 h-4" />
-          Part Coordinator
-        </button>
+      <div className="flex items-center gap-2 overflow-x-auto max-w-full py-1 border-b border-slate-100 pb-4" id="admin_tab_selector">
+        {(["accounting", "customers", "products"] as const).map((tab) => {
+          const label = tab === "accounting" 
+            ? "Bookkeeping & GST" 
+            : tab === "customers" 
+              ? `Customers (${customers.filter(c => c.email !== "lew@desmoproducts.com.au").length})` 
+              : "Products";
+          const icon = tab === "accounting" 
+            ? <TrendingUp className="w-4 h-4" /> 
+            : tab === "customers" 
+              ? <Users className="w-4 h-4" /> 
+              : <Wrench className="w-4 h-4" />;
+          return (
+            <button
+              key={tab}
+              id={`admin_tab_${tab}`}
+              onClick={() => { setActiveSubTab(tab); if (tab !== "customers") setSelectedCustomerId(null); }}
+              className={`flex items-center gap-2 px-4 py-2.5 border text-xs font-semibold rounded-lg transition whitespace-nowrap ${
+                activeSubTab === tab
+                  ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {icon}
+              {label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Tab Content 1: Accounting */}
+      {/* Tab Content 1: Bookkeeping & GST */}
       {activeSubTab === "accounting" && (
         <div className="space-y-8" id="accounting_sub_panel">
           {/* Ranges Selection */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-4 border-4 border-black rounded-none brutalist-shadow">
-            <span className="text-xs font-mono text-black font-black uppercase tracking-widest">Reporting Window:</span>
-            <div className="flex flex-wrap gap-2">
-              <button
-                id="btn_range_30d"
-                onClick={() => setDateRange("30days")}
-                className={`text-[10px] font-mono font-black uppercase tracking-wider px-3 py-2 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition ${
-                  dateRange === "30days" ? "bg-orange-600 text-white" : "bg-white text-black"
-                }`}
-              >
-                Last 30 Days
-              </button>
-              <button
-                id="btn_range_3m"
-                onClick={() => setDateRange("3months")}
-                className={`text-[10px] font-mono font-black uppercase tracking-wider px-3 py-2 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition ${
-                  dateRange === "3months" ? "bg-orange-600 text-white" : "bg-white text-black"
-                }`}
-              >
-                Last Quarter
-              </button>
-              <button
-                id="btn_range_fy"
-                onClick={() => setDateRange("fy")}
-                className={`text-[10px] font-mono font-black uppercase tracking-wider px-3 py-2 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition ${
-                  dateRange === "fy" ? "bg-orange-600 text-white" : "bg-white text-black"
-                }`}
-              >
-                Financial Year / Full history
-              </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 border border-slate-200 rounded-xl shadow-sm">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider font-mono">Reporting Window:</span>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: "30days", label: "Last 30 Days" },
+                  { id: "3months", label: "Last Quarter" },
+                  { id: "fy", label: "Financial Year" }
+                ].map(range => (
+                  <button
+                    key={range.id}
+                    onClick={() => setDateRange(range.id as any)}
+                    className={`text-xs font-semibold px-4 py-2 border rounded-lg transition ${
+                      dateRange === range.id
+                        ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {range.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider font-mono">Ledger Sorting & Grouping:</span>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: "customer", label: "By Customer" },
+                  { id: "week", label: "By Week" },
+                  { id: "month", label: "By Month" },
+                  { id: "quarter", label: "By Quarter" },
+                  { id: "fy", label: "By Fiscal Year" }
+                ].map(group => (
+                  <button
+                    key={group.id}
+                    onClick={() => setReportSortBy(group.id as any)}
+                    className={`text-xs font-semibold px-4 py-2 border rounded-lg transition ${
+                      reportSortBy === group.id
+                        ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {group.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Quick Metrics Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <div className="bg-white p-5 border-4 border-black rounded-none brutalist-shadow-lg space-y-2">
-              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block font-black">Booked Gross Receipts:</span>
-              <span className="text-3xl font-black font-mono text-black">${report.totalRevenue.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
-              <p className="text-[10px] text-slate-700 leading-normal font-mono font-bold uppercase">
+            <div className="bg-white p-6 border border-slate-200 rounded-xl shadow-sm space-y-2">
+              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-bold">Booked Gross Receipts:</span>
+              <span className="text-3xl font-extrabold text-slate-900 block font-sans">${report.totalRevenue.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
+              <p className="text-xs text-slate-500 leading-normal">
                 Subtotal + GST on {report.orderCount} active wholesale invoices.
               </p>
             </div>
 
-            <div className="bg-white p-5 border-4 border-black rounded-none brutalist-shadow-lg space-y-2">
-              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block font-black">Net Base Sales (ex. GST):</span>
-              <span className="text-3xl font-black font-mono text-black">${report.totalSubtotal.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
-              <p className="text-[10px] text-slate-700 leading-normal font-mono font-bold uppercase">
+            <div className="bg-white p-6 border border-slate-200 rounded-xl shadow-sm space-y-2">
+              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-bold">Net Base Sales (ex. GST):</span>
+              <span className="text-3xl font-extrabold text-slate-900 block font-sans">${report.totalSubtotal.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
+              <p className="text-xs text-slate-500 leading-normal">
                 Taxable components volume before GST.
               </p>
             </div>
 
-            <div className="bg-white p-5 border-4 border-black rounded-none brutalist-shadow-lg space-y-2 relative overflow-hidden">
-              <div className="absolute top-2 right-2 bg-orange-600 text-white border-2 border-black px-2 py-0.5 text-[8px] font-black uppercase tracking-widest font-mono">
+            <div className="bg-white p-6 border border-slate-200 rounded-xl shadow-sm space-y-2 relative overflow-hidden">
+              <div className="absolute top-3 right-3 bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-full">
                 BAS ACCRUAL
               </div>
-              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block font-black">GST Liabilities (10%):</span>
-              <span className="text-3xl font-black font-mono text-orange-600">${report.totalGST.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
-              <p className="text-[10px] text-slate-700 leading-normal font-mono font-bold uppercase">
+              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block font-bold">GST Liabilities (10%):</span>
+              <span className="text-3xl font-extrabold text-blue-600 block font-sans">${report.totalGST.toLocaleString('en-AU', { minimumFractionDigits: 2 })}</span>
+              <p className="text-xs text-slate-500 leading-normal">
                 GST collected representing 1/11th of gross wholesale sales.
               </p>
             </div>
@@ -331,24 +451,24 @@ export const AdminDashboard: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
             {/* Left: Customer breakdowns */}
-            <div className="lg:col-span-2 bg-white border-4 border-black rounded-none p-5 space-y-4 brutalist-shadow-lg">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-4 border-black pb-3">
-                <h3 className="text-sm font-black font-mono text-black uppercase tracking-tight">
+            <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-6 space-y-4 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
                   Partner Customer Revenue Ledger
                 </h3>
                 <button
                   id="copy_bas_csv_btn"
                   onClick={handleCopyBasData}
-                  className="bg-orange-600 hover:bg-orange-500 text-white border-2 border-black font-black font-mono text-[10px] py-1.5 px-3 uppercase tracking-wider transition shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] flex items-center gap-1.5"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2 px-4 rounded-lg transition shadow-sm flex items-center gap-1.5"
                 >
                   {basCopied ? (
                     <>
-                      <Check className="w-3.5 h-3.5 text-white" />
+                      <Check className="w-4 h-4 text-white" />
                       BAS CSV Copied!
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3.5 h-3.5" />
+                      <Copy className="w-4 h-4" />
                       Copy Bookkeeping CSV
                     </>
                   )}
@@ -356,29 +476,31 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               <div className="overflow-x-auto text-xs">
-                <table className="w-full text-left font-mono font-bold">
+                <table className="w-full text-left font-sans">
                   <thead>
-                    <tr className="border-b-2 border-black text-slate-500 uppercase text-[9px]">
-                      <th className="py-2.5">Workshop Company Name</th>
-                      <th className="py-2.5 text-center">Orders</th>
-                      <th className="py-2.5 text-right">Net Sales (ex. GST)</th>
-                      <th className="py-2.5 text-right">GST (10%)</th>
-                      <th className="py-2.5 text-right">Gross Total</th>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-slate-550 uppercase text-[9px] font-bold tracking-wider">
+                      <th className="py-2.5 px-3">
+                        {reportSortBy === "customer" ? "Workshop Company Name" : "Reporting Period"}
+                      </th>
+                      <th className="py-2.5 px-3 text-center">Invoices</th>
+                      <th className="py-2.5 px-3 text-right">Net Sales (ex. GST)</th>
+                      <th className="py-2.5 px-3 text-right">GST (10%)</th>
+                      <th className="py-2.5 px-3 text-right">Gross Total</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 text-black">
-                    {Object.keys(report.byCustomer).length === 0 ? (
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {Object.keys(report.ledger).length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-6 text-center text-slate-500 text-xs font-mono uppercase italic font-bold">No sales recorded within selected window.</td>
+                        <td colSpan={5} className="py-8 text-center text-slate-400 text-xs italic font-medium">No sales recorded within selected window.</td>
                       </tr>
                     ) : (
-                      Object.entries(report.byCustomer).map(([name, data], idx) => (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="py-3 font-sans font-black uppercase text-black text-xs tracking-tight">{name}</td>
-                          <td className="py-3 text-center">{data.count}</td>
-                          <td className="py-3 text-right">${data.subtotal.toFixed(2)}</td>
-                          <td className="py-3 text-right text-slate-600">${data.gst.toFixed(2)}</td>
-                          <td className="py-3 text-right font-black text-orange-600">${data.total.toFixed(2)}</td>
+                      Object.entries(report.ledger).map(([name, data], idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/50">
+                          <td className="py-3.5 px-3 font-semibold text-slate-900 uppercase text-xs tracking-tight">{name}</td>
+                          <td className="py-3.5 px-3 text-center font-mono">{data.count}</td>
+                          <td className="py-3.5 px-3 text-right font-mono">${data.subtotal.toFixed(2)}</td>
+                          <td className="py-3.5 px-3 text-right font-mono text-slate-500">${data.gst.toFixed(2)}</td>
+                          <td className="py-3.5 px-3 text-right font-mono font-bold text-blue-600">${data.total.toFixed(2)}</td>
                         </tr>
                       ))
                     )}
@@ -387,14 +509,14 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Right: Monthly breakdown chart (SVG visual) */}
-            <div className="bg-white border-4 border-black rounded-none p-5 space-y-4 flex flex-col justify-between brutalist-shadow-lg">
-              <h3 className="text-sm font-black font-mono text-black uppercase tracking-tight border-b-4 border-black pb-3">
+            {/* Right: Monthly breakdown chart */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 flex flex-col justify-between shadow-sm">
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-4">
                 Monthly Invoicing
               </h3>
 
               {Object.keys(report.byMonth).length === 0 ? (
-                <div className="flex-1 flex items-center justify-center py-12 text-slate-500 text-xs font-mono uppercase italic font-bold">
+                <div className="flex-1 flex items-center justify-center py-12 text-slate-400 text-xs italic font-medium">
                   No monthly patterns.
                 </div>
               ) : (
@@ -404,20 +526,20 @@ export const AdminDashboard: React.FC = () => {
                     const pct = maxVal > 0 ? (data.total / maxVal) * 100 : 0;
                     return (
                       <div key={idx} className="space-y-1">
-                        <div className="flex justify-between items-center text-[10px] font-mono font-bold">
-                          <span className="text-black uppercase font-black">{month}</span>
-                          <span className="text-slate-600">Net: <strong className="text-black">${data.subtotal.toFixed(0)}</strong> • GST: <strong className="text-orange-600">${data.gst.toFixed(0)}</strong></span>
+                        <div className="flex justify-between items-center text-[10px] font-mono">
+                          <span className="text-slate-800 uppercase font-bold">{month}</span>
+                          <span className="text-slate-500">Net: <strong className="text-slate-700">${data.subtotal.toFixed(0)}</strong> • GST: <strong className="text-blue-600">${data.gst.toFixed(0)}</strong></span>
                         </div>
-                        <div className="w-full bg-slate-100 h-4 rounded-none overflow-hidden border-2 border-black">
+                        <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200">
                           <div 
-                            className="bg-orange-600 h-full rounded-none transition-all duration-500" 
+                            className="bg-blue-600 h-full rounded-full transition-all duration-500" 
                             style={{ width: `${pct}%` }}
                           />
                         </div>
                       </div>
                     );
                   })}
-                  <div className="pt-2 text-[9px] text-slate-500 font-mono font-bold uppercase leading-normal">
+                  <div className="pt-2 text-[10px] text-slate-400 uppercase leading-normal font-medium">
                     * The above graph maps total monthly gross invoicing trends to visually assist in quarterly BAS tracking.
                   </div>
                 </div>
@@ -433,8 +555,8 @@ export const AdminDashboard: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8" id="customers_crm_panel">
           
           {/* Left Column: Customers List */}
-          <div className="lg:col-span-1 bg-white border-4 border-black rounded-none p-5 space-y-4 h-fit brutalist-shadow-lg">
-            <h3 className="text-sm font-black font-mono text-black uppercase tracking-tight border-b-4 border-black pb-3">
+          <div className="lg:col-span-1 bg-white border border-slate-200 rounded-xl p-6 space-y-4 h-fit shadow-sm">
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-4">
               Wholesale Clients Ledger
             </h3>
 
@@ -448,29 +570,28 @@ export const AdminDashboard: React.FC = () => {
                       key={customer.id}
                       id={`crm_card_${customer.id}`}
                       onClick={() => setSelectedCustomerId(customer.id)}
-                      className={`p-3.5 rounded-none border-2 transition cursor-pointer text-xs ${
+                      className={`p-4 rounded-xl border transition cursor-pointer text-xs ${
                         isSelected 
-                          ? "bg-orange-50 border-orange-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" 
-                          : "bg-white border-black hover:bg-slate-50 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                          ? "bg-blue-50/50 border-blue-500 shadow-sm" 
+                          : "bg-white border-slate-200 hover:bg-slate-50/80 hover:border-slate-300"
                       }`}
                     >
                       <div className="flex justify-between items-start gap-2">
-                        <h4 className="font-black text-black uppercase tracking-tight text-xs line-clamp-1">{customer.companyName}</h4>
+                        <h4 className="font-bold text-slate-800 uppercase tracking-tight text-xs line-clamp-1">{customer.companyName}</h4>
                         {customer.status === "approved" ? (
-                          <span className="bg-emerald-600 text-white text-[8px] font-mono uppercase px-1.5 py-0.5 border border-black font-black">Approved</span>
+                          <span className="bg-emerald-500 text-white text-[8px] font-mono uppercase px-2 py-0.5 rounded-full font-bold">Approved</span>
                         ) : customer.status === "rejected" ? (
-                          <span className="bg-red-600 text-white text-[8px] font-mono uppercase px-1.5 py-0.5 border border-black font-black">Rejected</span>
+                          <span className="bg-red-500 text-white text-[8px] font-mono uppercase px-2 py-0.5 rounded-full font-bold">Rejected</span>
                         ) : (
-                          <span className="bg-orange-500 text-white text-[8px] font-mono uppercase px-1.5 py-0.5 border border-black font-black animate-pulse">Pending</span>
+                          <span className="bg-amber-500 text-white text-[8px] font-mono uppercase px-2 py-0.5 rounded-full font-bold animate-pulse">Pending</span>
                         )}
                       </div>
-                      <p className="text-slate-600 font-mono mt-1 text-[10px] font-bold truncate">{customer.email}</p>
+                      <p className="text-slate-500 font-mono mt-1 text-[10px] truncate">{customer.email}</p>
                       
-                      {/* Pricing / restricted counts brief info */}
                       {customer.status === "approved" && (
-                        <div className="flex gap-3 text-[9px] text-slate-700 font-mono mt-2 border-t border-slate-200 pt-1.5 font-bold uppercase">
-                          <span>Overrides: <strong className="text-orange-600">{Object.keys(customer.customPricing || {}).length}</strong></span>
-                          <span>Parts: <strong className="text-orange-600">{customer.allowedProducts?.length || 0}</strong></span>
+                        <div className="flex gap-3 text-[9px] text-slate-400 font-mono mt-3 border-t border-slate-100 pt-2 uppercase font-medium">
+                          <span>Overrides: <strong className="text-blue-600">{Object.keys(customer.customPricing || {}).length}</strong></span>
+                          <span>Parts: <strong className="text-blue-600">{customer.allowedProducts?.length || 0}</strong></span>
                         </div>
                       )}
                     </div>
@@ -482,17 +603,17 @@ export const AdminDashboard: React.FC = () => {
           {/* Right Columns: Customer details/custom pricing configuration */}
           <div className="lg:col-span-2 space-y-6">
             {!selectedCustomer ? (
-              <div className="bg-white border-4 border-black rounded-none p-12 text-center text-slate-700 text-xs font-mono font-bold uppercase tracking-wide brutalist-shadow-lg">
+              <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500 text-xs uppercase tracking-wider font-semibold shadow-sm leading-relaxed">
                 Select a wholesale customer profile on the left to approve registration, define contract pricing lists, or map restricted items.
               </div>
             ) : (
               <div className="space-y-6" id="customer_detail_crm_editor">
                 {/* Status & Approvals */}
-                <div className="bg-white border-4 border-black rounded-none p-5 space-y-4 brutalist-shadow-lg">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-black pb-3">
+                <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
                     <div>
-                      <h3 className="text-lg font-black uppercase text-black tracking-tight">{selectedCustomer.companyName}</h3>
-                      <p className="text-[10px] text-slate-600 font-mono font-black uppercase tracking-wider mt-0.5">{selectedCustomer.email} • Registered {new Date(selectedCustomer.createdAt).toLocaleDateString()}</p>
+                      <h3 className="text-lg font-bold uppercase text-slate-900 tracking-tight">{selectedCustomer.companyName}</h3>
+                      <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider mt-0.5">{selectedCustomer.email} • Registered {new Date(selectedCustomer.createdAt).toLocaleDateString()}</p>
                     </div>
 
                     <div className="flex gap-2">
@@ -500,10 +621,10 @@ export const AdminDashboard: React.FC = () => {
                         <button
                           id="crm_approve_btn"
                           onClick={() => approveCustomer(selectedCustomer.id)}
-                          className="bg-emerald-600 hover:bg-emerald-500 text-white border-2 border-black font-black uppercase tracking-wider text-[11px] py-1.5 px-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] flex items-center gap-1.5 transition"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold uppercase tracking-wider text-[10px] py-2 px-4 rounded-lg shadow-sm flex items-center gap-1.5 transition"
                         >
-                          <Check className="w-3.5 h-3.5" />
-                          Approve Partner Access
+                          <Check className="w-4 h-4" />
+                          Approve Partner
                         </button>
                       )}
 
@@ -514,16 +635,16 @@ export const AdminDashboard: React.FC = () => {
                             rejectCustomer(selectedCustomer.id);
                             setSelectedCustomerId(null);
                           }}
-                          className="bg-white hover:bg-red-50 text-red-600 border-2 border-black font-black uppercase tracking-wider text-[11px] py-1.5 px-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition flex items-center gap-1.5"
+                          className="bg-white hover:bg-slate-50 text-red-650 border border-slate-200 font-semibold uppercase tracking-wider text-[10px] py-2 px-4 rounded-lg shadow-sm transition flex items-center gap-1.5"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <X className="w-4 h-4" />
                           Reject / Deny
                         </button>
                       )}
                     </div>
                   </div>
 
-                  <p className="text-xs text-slate-700 font-mono font-bold uppercase leading-normal">
+                  <p className="text-xs text-slate-500 leading-normal font-medium">
                     Approved partner accounts can access wholesale portal prices and submit order drafts. Denied accounts are barred. 
                   </p>
                 </div>
@@ -532,25 +653,25 @@ export const AdminDashboard: React.FC = () => {
                 {selectedCustomer.status === "approved" && (
                   <>
                     {/* Custom override sheet */}
-                    <div className="bg-white border-4 border-black rounded-none p-5 space-y-4 brutalist-shadow-lg">
-                      <h4 className="text-xs font-black font-mono text-black uppercase tracking-wider border-b-2 border-black pb-2">
+                    <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 shadow-sm">
+                      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-2">
                         Partner Pricing Override Sheet
                       </h4>
-                      <p className="text-xs text-slate-700 font-mono font-bold uppercase leading-normal">
+                      <p className="text-xs text-slate-500 leading-normal">
                         Enter customer-specific wholesale contract prices. These override baseline wholesale pricing. Leave blank or remove to default to standard wholesale.
                       </p>
 
-                      <div className="border-2 border-black rounded-none overflow-hidden text-xs">
-                        <table className="w-full text-left font-sans font-bold">
+                      <div className="border border-slate-200 rounded-lg overflow-hidden text-xs">
+                        <table className="w-full text-left font-sans">
                           <thead>
-                            <tr className="bg-black text-white font-mono text-[9px] uppercase border-b-2 border-black">
-                              <th className="px-3 py-2.5">Component & SKU</th>
-                              <th className="px-3 py-2.5 text-right">Standard Wholesale</th>
-                              <th className="px-3 py-2.5 text-right w-36">Contract Override</th>
-                              <th className="px-3 py-2.5 text-center w-28">Actions</th>
+                            <tr className="bg-slate-50 text-slate-500 font-mono text-[9px] uppercase border-b border-slate-200 font-semibold">
+                              <th className="px-4 py-2.5">Component & SKU</th>
+                              <th className="px-4 py-2.5 text-right">Standard Wholesale</th>
+                              <th className="px-4 py-2.5 text-right w-36">Contract Override</th>
+                              <th className="px-4 py-2.5 text-center w-28">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-200 text-black font-mono">
+                          <tbody className="divide-y divide-slate-100 text-slate-700 font-mono">
                             {products.map((p) => {
                               const hasOverride = selectedCustomer.customPricing && selectedCustomer.customPricing[p.id] !== undefined;
                               const currentOverride = hasOverride ? selectedCustomer.customPricing?.[p.id] : "";
@@ -559,31 +680,31 @@ export const AdminDashboard: React.FC = () => {
                               const inputVal = pricingInputValues[valKey] !== undefined ? pricingInputValues[valKey] : "";
 
                               return (
-                                <tr key={p.id} className="hover:bg-slate-50">
-                                  <td className="px-3 py-2.5 font-sans">
-                                    <p className="font-black text-black uppercase tracking-tight text-xs">{p.name}</p>
-                                    <p className="text-[10px] text-slate-600 font-mono mt-1 font-bold">{p.sku}</p>
+                                <tr key={p.id} className="hover:bg-slate-50/50">
+                                  <td className="px-4 py-3.5 font-sans">
+                                    <p className="font-bold text-slate-900 uppercase tracking-tight text-xs">{p.name}</p>
+                                    <p className="text-[10px] text-slate-500 font-mono mt-1 font-medium">{p.sku}</p>
                                   </td>
-                                  <td className="px-3 py-2.5 text-right font-bold">${p.baseWholesalePrice.toFixed(2)}</td>
-                                  <td className="px-3 py-2.5 text-right">
-                                    <div className="flex items-center bg-white border-2 border-black rounded-none p-1 w-full max-w-[120px] ml-auto">
-                                      <span className="text-[10px] text-black font-bold font-mono">$</span>
+                                  <td className="px-4 py-3.5 text-right font-bold font-mono text-slate-800">${p.baseWholesalePrice.toFixed(2)}</td>
+                                  <td className="px-4 py-3.5 text-right">
+                                    <div className="flex items-center bg-white border border-slate-250 rounded-lg p-1.5 w-full max-w-[120px] ml-auto focus-within:border-blue-500 transition">
+                                      <span className="text-[10px] text-slate-400 font-mono font-medium">$</span>
                                       <input
                                         id={`crm_price_override_${selectedCustomer.id}_${p.id}`}
                                         type="number"
                                         placeholder={hasOverride ? currentOverride?.toFixed(2) : "None"}
                                         value={inputVal}
                                         onChange={(e) => setPricingInputValues(prev => ({ ...prev, [valKey]: e.target.value }))}
-                                        className="w-full text-right bg-transparent border-none text-xs font-black text-black py-0 px-1 outline-none focus:ring-0"
+                                        className="w-full text-right bg-transparent border-none text-xs font-bold text-slate-900 py-0 px-1 outline-none focus:ring-0"
                                       />
                                     </div>
                                   </td>
-                                  <td className="px-3 py-2.5 text-center">
+                                  <td className="px-4 py-3.5 text-center">
                                     <div className="inline-flex gap-1.5">
                                       <button
                                         id={`save_override_${selectedCustomer.id}_${p.id}`}
                                         onClick={() => handleUpdatePriceOverride(selectedCustomer.id, p.id)}
-                                        className="bg-black hover:bg-slate-900 text-white font-sans font-bold p-1 border-2 border-black transition"
+                                        className="bg-blue-600 hover:bg-blue-700 text-white font-sans rounded-lg p-1.5 transition shadow-sm"
                                         title="Save price override"
                                       >
                                         <Check className="w-4 h-4 text-white" />
@@ -595,10 +716,10 @@ export const AdminDashboard: React.FC = () => {
                                             removeCustomerPricing(selectedCustomer.id, p.id);
                                             alert("Override removed!");
                                           }}
-                                          className="bg-white hover:bg-slate-50 text-red-600 font-sans font-bold p-1 border-2 border-black transition"
+                                          className="bg-white hover:bg-slate-50 text-red-650 rounded-lg p-1.5 border border-slate-200 transition shadow-sm"
                                           title="Remove override"
                                         >
-                                          <X className="w-4 h-4 text-red-600" />
+                                          <X className="w-4 h-4 text-red-650" />
                                         </button>
                                       )}
                                     </div>
@@ -612,11 +733,11 @@ export const AdminDashboard: React.FC = () => {
                     </div>
 
                     {/* Restricted product mappings */}
-                    <div className="bg-white border-4 border-black rounded-none p-5 space-y-4 brutalist-shadow-lg">
-                      <h4 className="text-xs font-black font-mono text-black uppercase tracking-wider border-b-2 border-black pb-2">
+                    <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 shadow-sm">
+                      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-2">
                         Restricted Parts Mapping Visibility
                       </h4>
-                      <p className="text-xs text-slate-700 font-mono font-bold uppercase leading-normal">
+                      <p className="text-xs text-slate-500 leading-normal">
                         Certain high-end/racing parts are hidden from the public and standard customer accounts. Toggle below to authorize this customer to view and buy these restricted parts:
                       </p>
 
@@ -629,20 +750,20 @@ export const AdminDashboard: React.FC = () => {
                               <div
                                 key={p.id}
                                 id={`crm_restrict_item_${p.id}`}
-                                className="flex items-center justify-between p-3 border-2 border-black bg-slate-50 text-xs"
+                                className="flex items-center justify-between p-4 border border-slate-200 rounded-xl bg-slate-50/50 text-xs shadow-sm"
                               >
                                 <div className="space-y-0.5 max-w-[180px]">
-                                  <p className="font-black text-black uppercase tracking-tight truncate text-xs">{p.name}</p>
-                                  <p className="text-[10px] text-slate-600 font-mono font-bold truncate">{p.sku}</p>
+                                  <p className="font-bold text-slate-800 uppercase tracking-tight truncate text-xs">{p.name}</p>
+                                  <p className="text-[10px] text-slate-500 font-mono font-medium truncate">{p.sku}</p>
                                 </div>
 
                                 <button
                                   id={`toggle_access_${selectedCustomer.id}_${p.id}`}
                                   onClick={() => toggleRestrictedProductAccess(selectedCustomer.id, p.id)}
-                                  className={`px-3 py-1 border-2 border-black rounded-none font-mono text-[10px] font-black uppercase tracking-wider transition shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] ${
+                                  className={`px-3 py-1.5 border rounded-lg font-mono text-[10px] font-bold uppercase tracking-wider transition shadow-sm ${
                                     isAllowed 
-                                      ? "bg-orange-600 text-white" 
-                                      : "bg-white text-black"
+                                      ? "bg-blue-600 border-blue-600 text-white" 
+                                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
                                   }`}
                                 >
                                   {isAllowed ? "✓ Authorized" : "✕ Blocked"}
@@ -712,6 +833,72 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label htmlFor="new_prod_stock" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Qty in Stock:</label>
+                  <input
+                    id="new_prod_stock"
+                    type="number"
+                    required
+                    min="0"
+                    value={newProdStock}
+                    onChange={(e) => setNewProdStock(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="new_prod_category" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Category:</label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      id="new_prod_category"
+                      value={newProdCategory}
+                      onChange={(e) => setNewProdCategory(e.target.value)}
+                      className="flex-1 bg-white border border-slate-250 rounded-lg p-2.5 text-slate-850 focus:outline-none focus:border-blue-500 transition text-xs font-semibold"
+                    >
+                      {categories.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if(window.confirm(`Delete category "${newProdCategory}"?`)) {
+                          deleteCategory(newProdCategory);
+                          if(categories.length > 0) setNewProdCategory(categories[0]);
+                        }
+                      }}
+                      className="p-2.5 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition"
+                      title="Delete selected category"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <input
+                      type="text"
+                      placeholder="New Category"
+                      value={newCategoryName}
+                      onChange={e => setNewCategoryName(e.target.value)}
+                      className="flex-1 bg-white border border-slate-250 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (newCategoryName.trim()) {
+                          addCategory(newCategoryName.trim());
+                          setNewProdCategory(newCategoryName.trim());
+                          setNewCategoryName("");
+                        }
+                      }}
+                      className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs font-bold text-slate-700 rounded-lg transition"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label htmlFor="new_prod_desc" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Description:</label>
                 <textarea
@@ -724,38 +911,86 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label htmlFor="new_prod_img" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Product Image URL:</label>
-                <input
-                  id="new_prod_img"
-                  type="text"
-                  placeholder="https://..."
-                  value={newProdImg}
-                  onChange={(e) => setNewProdImg(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-850 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition text-xs"
-                />
+                <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Product Image:</label>
+                <div className="flex items-center gap-3">
+                  <label className="border border-slate-250 bg-white hover:bg-slate-50 text-slate-700 py-2.5 px-3.5 text-xs font-semibold uppercase tracking-wider rounded-lg shadow-sm cursor-pointer transition flex items-center justify-center font-mono">
+                    Upload Local File
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleImageUpload} 
+                      className="hidden" 
+                    />
+                  </label>
+                  {imagePreviewUrl ? (
+                    <div className="relative w-12 h-12 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shadow-sm flex-shrink-0">
+                      <img src={imagePreviewUrl} className="w-full h-full object-cover" alt="Preview" />
+                      <button 
+                        type="button" 
+                        onClick={() => { setNewProdImg(""); setImagePreviewUrl(null); }}
+                        className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-650 transition"
+                        style={{ fontSize: '8px', lineHeight: 1 }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 font-mono">No file chosen</span>
+                  )}
+                </div>
               </div>
 
-              <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                <div className="space-y-0.5">
-                  <span className="font-bold text-slate-800 tracking-tight text-xs">Restricted Access?</span>
-                  <p className="text-[9px] text-slate-500 font-mono leading-tight uppercase font-semibold">If checked, equipment is hidden until authorized.</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-slate-800 tracking-tight text-xs">Allow Backorders?</span>
+                    <p className="text-[8px] text-slate-500 leading-tight uppercase font-semibold font-mono">Sell beyond stock limit</p>
+                  </div>
+                  <input
+                    id="new_prod_allow_backorders"
+                    type="checkbox"
+                    checked={newProdAllowBackorders}
+                    onChange={(e) => setNewProdAllowBackorders(e.target.checked)}
+                    className="w-5 h-5 accent-blue-600 border border-slate-350 rounded cursor-pointer"
+                  />
                 </div>
-                <input
-                  id="new_prod_restricted"
-                  type="checkbox"
-                  checked={newProdRestricted}
-                  onChange={(e) => setNewProdRestricted(e.target.checked)}
-                  className="w-5 h-5 accent-blue-600 border border-slate-350 rounded cursor-pointer"
-                />
+
+                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-slate-800 tracking-tight text-xs">Restricted Access?</span>
+                    <p className="text-[8px] text-slate-500 leading-tight uppercase font-semibold font-mono">Hidden until authorized</p>
+                  </div>
+                  <input
+                    id="new_prod_restricted"
+                    type="checkbox"
+                    checked={newProdRestricted}
+                    onChange={(e) => setNewProdRestricted(e.target.checked)}
+                    className="w-5 h-5 accent-blue-600 border border-slate-350 rounded cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-slate-800 tracking-tight text-xs">Auto Approve?</span>
+                    <p className="text-[8px] text-slate-500 leading-tight uppercase font-semibold font-mono">Auto-approve orders</p>
+                  </div>
+                  <input
+                    id="new_prod_auto_approve"
+                    type="checkbox"
+                    checked={newProdAutoApprove}
+                    onChange={(e) => setNewProdAutoApprove(e.target.checked)}
+                    className="w-5 h-5 accent-blue-600 border border-slate-350 rounded cursor-pointer"
+                  />
+                </div>
               </div>
 
               {/* Quantity break rules creator */}
               <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg space-y-3">
                 <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-semibold block">Add Quantity Break:</span>
                 
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="flex items-center bg-white border border-slate-200 rounded-lg p-1">
-                    <span className="text-[9px] text-slate-400 font-mono px-1 font-semibold">MIN QTY:</span>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="flex items-center bg-white border border-slate-200 rounded-lg p-1.5 col-span-1">
+                    <span className="text-[9px] text-slate-450 font-mono px-1 font-semibold">MIN:</span>
                     <input
                       id="new_prod_qb_qty"
                       type="number"
@@ -765,14 +1000,27 @@ export const AdminDashboard: React.FC = () => {
                       className="w-full bg-transparent border-none text-xs font-bold text-slate-700 py-0 px-1 text-right outline-none focus:ring-0"
                     />
                   </div>
-                  <div className="flex items-center bg-white border border-slate-200 rounded-lg p-1">
-                    <span className="text-[9px] text-slate-400 font-mono px-1 font-semibold">DISC %:</span>
+
+                  <div className="flex items-center bg-white border border-slate-200 rounded-lg p-1.5 col-span-1">
+                    <select
+                      id="new_prod_qb_val_type"
+                      value={newProdQbValueType}
+                      onChange={(e) => setNewProdQbValueType(e.target.value as any)}
+                      className="w-full bg-transparent border-none text-[9px] font-bold text-slate-750 py-0 outline-none focus:ring-0 font-mono"
+                    >
+                      <option value="percentage">% Disc</option>
+                      <option value="fixed">Fixed $</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center bg-white border border-slate-200 rounded-lg p-1.5 col-span-1">
+                    <span className="text-[9px] text-slate-450 font-mono px-1 font-semibold">VAL:</span>
                     <input
-                      id="new_prod_qb_disc"
+                      id="new_prod_qb_value"
                       type="number"
                       min="1"
-                      value={newProdQbDisc}
-                      onChange={(e) => setNewProdQbDisc(parseInt(e.target.value) || 1)}
+                      value={newProdQbValue}
+                      onChange={(e) => setNewProdQbValue(parseFloat(e.target.value) || 1)}
                       className="w-full bg-transparent border-none text-xs font-bold text-slate-700 py-0 px-1 text-right outline-none focus:ring-0"
                     />
                   </div>
@@ -782,7 +1030,7 @@ export const AdminDashboard: React.FC = () => {
                   id="add_qb_break_btn"
                   type="button"
                   onClick={handleAddQtyBreak}
-                  className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-1.5 px-2 border border-slate-800 rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm"
+                  className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-1.5 px-2 border border-slate-800 rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm font-mono"
                 >
                   Confirm Break Tier
                 </button>
@@ -791,7 +1039,10 @@ export const AdminDashboard: React.FC = () => {
                   <div className="space-y-1.5 border-t border-slate-200 pt-3 text-[10px] font-mono font-bold text-slate-650 uppercase">
                     {newProdQtyBreaks.map((qb, i) => (
                       <div key={i} className="flex justify-between items-center bg-white border border-slate-200 p-2 rounded-lg">
-                        <span>Buy {qb.minQty}+ units gets -{qb.discountPercent}%</span>
+                        <span>
+                          Buy {qb.minQty}+ units gets{" "}
+                          {qb.discountType === "fixed" ? `$${qb.discountValue.toFixed(2)} fixed` : `-${qb.discountValue}%`}
+                        </span>
                         <button 
                           id={`delete_qb_break_${i}`}
                           onClick={() => handleRemoveQtyBreak(i)} 
@@ -823,14 +1074,15 @@ export const AdminDashboard: React.FC = () => {
             </h3>
 
             <div className="border border-slate-200 rounded-lg overflow-hidden text-xs">
-              <table className="w-full text-left font-sans font-bold">
+              <table className="w-full text-left font-sans">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-605 border-b border-slate-200 font-mono text-[9px] uppercase">
+                  <tr className="bg-slate-50 text-slate-500 border-b border-slate-200 font-mono text-[9px] uppercase font-semibold">
                     <th className="px-3 py-2.5">Equipment Details</th>
                     <th className="px-3 py-2.5">Category</th>
                     <th className="px-3 py-2.5 text-right">Wholesale Price (ex. GST)</th>
                     <th className="px-3 py-2.5 text-center">Restricted</th>
                     <th className="px-3 py-2.5 text-center">Breaks</th>
+                    <th className="px-3 py-2.5 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700 font-mono">
@@ -841,9 +1093,9 @@ export const AdminDashboard: React.FC = () => {
                         <p className="text-[10px] text-slate-500 font-mono mt-1 font-medium">{p.sku}</p>
                       </td>
                       <td className="px-3 py-2.5 text-slate-500 font-sans uppercase text-[11px] font-medium">{p.category || "General"}</td>
-                      <td className="px-3 py-2.5 text-right font-bold text-blue-600">${p.baseWholesalePrice.toFixed(2)}</td>
+                      <td className="px-3 py-2.5 text-right font-bold text-blue-600 font-mono">${p.baseWholesalePrice.toFixed(2)}</td>
                       <td className="px-3 py-2.5 text-center">
-                        <span className={`text-[9px] px-2 py-0.5 font-bold uppercase rounded ${
+                        <span className={`text-[9px] px-2 py-0.5 font-bold uppercase rounded-full ${
                           p.isRestricted 
                             ? "bg-red-50 text-red-650 border border-red-200" 
                             : "bg-slate-100 text-slate-500 border border-slate-200"
@@ -853,6 +1105,19 @@ export const AdminDashboard: React.FC = () => {
                       </td>
                       <td className="px-3 py-2.5 text-center text-slate-500 font-semibold uppercase text-[10px]">
                         {p.quantityBreaks?.length || 0} breaks
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <button
+                          onClick={() => {
+                            if(window.confirm(`Are you sure you want to delete ${p.name}?`)) {
+                              deleteProduct(p.id);
+                            }
+                          }}
+                          className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition inline-flex items-center justify-center"
+                          title="Delete Product"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))}
