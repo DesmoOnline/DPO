@@ -29,7 +29,6 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
   const [newDeliveryAddress, setNewDeliveryAddress] = useState("");
   const [isAddingAddress, setIsAddingAddress] = useState(false);
   const [rateBreakProfile, setRateBreakProfile] = useState<any>(null);
-  const [weightBreaksMap, setWeightBreaksMap] = useState<{ [productId: string]: any[] }>({});
   const [documentMode, setDocumentMode] = useState<"QUOTE" | "INVOICE">("QUOTE");
 
   // Admin on-behalf-of state
@@ -44,7 +43,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
     c => c.status === "approved" && c.id !== currentUser?.id
   );
 
-  // Load rate break profile and weight breaks when customer changes
+  // Load rate break profile when customer changes
   useEffect(() => {
     const loadPricingData = async () => {
       if (!currentUser) return;
@@ -61,30 +60,10 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
       } else {
         setRateBreakProfile(null);
       }
-
-      // Load weight breaks for all products
-      if (currentUser.weightBreakAssignments && Object.keys(currentUser.weightBreakAssignments).length > 0) {
-        try {
-          const newWeightBreaksMap: { [productId: string]: any[] } = {};
-          for (const [productId, templateIds] of Object.entries(currentUser.weightBreakAssignments)) {
-            const ids = templateIds as string[];
-            if (ids && ids.length > 0) {
-              const breaks = await getCustomerWeightBreaksForProduct(ids, productId);
-              newWeightBreaksMap[productId] = breaks;
-            }
-          }
-          setWeightBreaksMap(newWeightBreaksMap);
-        } catch (err) {
-          console.error("Failed to load weight breaks:", err);
-          setWeightBreaksMap({});
-        }
-      } else {
-        setWeightBreaksMap({});
-      }
     };
 
     loadPricingData();
-  }, [currentUser?.rateBreakProfileId, currentUser?.weightBreakAssignments]);
+  }, [currentUser?.rateBreakProfileId]);
 
   if (!currentUser || (!isActualAdmin && currentUser.status !== "approved")) {
     return (
@@ -126,13 +105,21 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
     let isFixedDiscount = false;
     let appliedFrom = "default"; // Track where discount came from
 
-    // Priority 1: Weight Breaks (if assigned to this customer for this product)
-    const weightBreaks = weightBreaksMap[prod.id];
-    if (weightBreaks && weightBreaks.length > 0) {
-      const weightResult = calculatePriceWithWeightBreaks(originalPrice, item.qty, weightBreaks);
-      if (weightResult.appliedTemplate) {
-        finalPricePerUnit = weightResult.finalPrice;
-        discountPercent = Math.round(weightResult.discountPercent);
+    // Priority 1: Product-Specific Rate Breaks (if assigned to this customer for this product)
+    const alignmentId = currentUser.productRateBreakAlignments?.[prod.id];
+    const alignedRateBreak = prod.rateBreaks?.find(rb => rb.id === alignmentId);
+    if (alignedRateBreak) {
+      const applicableBreak = [...alignedRateBreak.quantityBreaks]
+        .sort((a, b) => b.minQty - a.minQty)
+        .find(qb => item.qty >= qb.minQty);
+      if (applicableBreak) {
+        if (applicableBreak.discountType === "percentage") {
+          finalPricePerUnit = originalPrice * (1 - applicableBreak.discountValue / 100);
+          discountPercent = applicableBreak.discountValue;
+        } else {
+          finalPricePerUnit = Math.max(0, originalPrice - applicableBreak.discountValue);
+          discountPercent = Math.round(((originalPrice - finalPricePerUnit) / originalPrice) * 100);
+        }
         appliedFrom = "weight";
       }
     }

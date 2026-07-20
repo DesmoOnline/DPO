@@ -20,6 +20,8 @@ service cloud.firestore {
       return isSignedIn() && 
         (request.auth.token.email == "lew@desmoproducts.com.au" || 
          request.auth.token.email == "1@1.com" ||
+         request.auth.uid == "rysSGhbaj8O7CIuZp0KiQsDUF" ||
+         request.auth.uid == "FNmQiIOF1tccb2D1z7qfz2Vybgn2" ||
          exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
     }
 
@@ -39,11 +41,10 @@ service cloud.firestore {
       allow list: if isSignedIn();
       
       // Creating a profile: Status MUST be pending on self-registration unless admin
-      allow create: if isSignedIn() && isOwner(userId) && (
-        isAdmin() || (
-          request.resource.data.status == "pending" &&
-          request.resource.data.email == request.auth.token.email
-        )
+      allow create: if isAdmin() || (
+        isSignedIn() && isOwner(userId) &&
+        request.resource.data.status == "pending" &&
+        request.resource.data.email == request.auth.token.email
       );
         
       // Updating a profile: Admin can update anything. Owner can update company name, but cannot approve themselves or change custom pricing.

@@ -110,7 +110,7 @@ export const WeightBreakManager: React.FC<WeightBreakManagerProps> = ({ onClose 
         });
       } else {
         if (templates.length >= 10) {
-          alert("Maximum 10 weight break templates allowed");
+          alert("Maximum 10 rate break templates allowed");
           return;
         }
         await createWeightBreakTemplate(formData, userId);
@@ -140,14 +140,14 @@ export const WeightBreakManager: React.FC<WeightBreakManagerProps> = ({ onClose 
   };
 
   if (loading) {
-    return <div className="p-4">Loading weight break templates...</div>;
+    return <div className="p-4">Loading rate break templates...</div>;
   }
 
   return (
     <div className="p-6 bg-gray-50 rounded-lg">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Weight Break Templates</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Rate Break Templates</h2>
           <p className="text-sm text-gray-500 mt-1">Create up to 10 quantity-based pricing tiers</p>
         </div>
         <button
@@ -184,7 +184,7 @@ export const WeightBreakManager: React.FC<WeightBreakManagerProps> = ({ onClose 
 
       {templates.length === 0 ? (
         <div className="text-center py-8 text-gray-500">
-          No weight break templates yet. Create one to get started.
+          No rate break templates yet. Create one to get started.
         </div>
       ) : (
         <div className="space-y-4">

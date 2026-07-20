@@ -29,6 +29,12 @@ export interface WeightBreakTemplate {
   createdBy: string;
 }
 
+export interface ProductRateBreak {
+  id: string;             // e.g. "prb_1"
+  name: string;           // e.g. "Special Tier A"
+  quantityBreaks: QuantityBreak[];
+}
+
 // Rate Break Profile: Reusable pricing template assigned to customers
 export interface RateBreakProfile {
   id: string;             // e.g. "rbp-wholesale"
@@ -62,6 +68,7 @@ export interface Product {
   isRestricted: boolean; // If true, only visible to approved customers in their allowed list
   autoApprove?: boolean; // If true, order containing only auto-approvable items is auto-approved
   quantityBreaks?: QuantityBreak[];
+  rateBreaks?: ProductRateBreak[];
   category?: string;
   stock?: number;
   allowBackorders?: boolean;
@@ -81,6 +88,7 @@ export interface CustomerProfile {
   pricingTierId?: string; // ID of a PricingTier assigned to this customer
   rateBreakProfileId?: string; // ID of RateBreakProfile assigned to this customer
   weightBreakAssignments?: { [productId: string]: string[] }; // Map of productId -> array of WeightBreakTemplate IDs
+  productRateBreakAlignments?: { [productId: string]: string }; // Map of productId -> productRateBreakId
 }
 
 export interface OrderItem {

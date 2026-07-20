@@ -81,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
               <span className="text-slate-800">Products</span>
             </h1>
             <p className="text-[9px] font-bold text-slate-400 mt-2 tracking-[0.25em] uppercase font-mono">
-              HIGH-PRECISION ELECTRICAL TESTING EQUIPMENT
+              ELECTRICAL TESTING EQUIPMENT
             </p>
           </div>
         </div>
@@ -132,7 +132,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenP
               }`}
             >
               <FileText className="w-4 h-4" />
-              {isAdmin ? "Orders & Invoices" : "My Quotes & Invoices"}
+              {isAdmin ? "Orders & Invoices" : "My Q & I"}
             </button>
 
             {isAdmin && (

@@ -15,7 +15,7 @@ import {
   onSnapshot,
   Timestamp
 } from "firebase/firestore";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged, signOut, createUserWithEmailAndPassword } from "firebase/auth";
 import { generateInvoicePDF } from "../utils/pdfGenerator";
 
 // Error structure required by firebase-integration skill
@@ -65,7 +65,7 @@ interface PortalContextType {
   cart: { product: Product; qty: number; selectedColors?: string[] }[];
   
   // Auth actions
-  register: (email: string, companyName: string, deliveryAddress: string) => Promise<void>;
+  register: (email: string, password: string, companyName: string, deliveryAddress: string) => Promise<void>;
   logout: () => Promise<void>;
   addDeliveryAddress: (customerId: string, address: string) => Promise<void>;
   
@@ -84,6 +84,7 @@ interface PortalContextType {
   rejectCustomer: (customerId: string) => Promise<void>;
   updateCustomerPricing: (customerId: string, productId: string, price: number) => Promise<void>;
   removeCustomerPricing: (customerId: string, productId: string) => Promise<void>;
+  updateProductRateBreakAlignment: (customerId: string, productId: string, rateBreakId: string | null) => Promise<void>;
   toggleRestrictedProductAccess: (customerId: string, productId: string) => Promise<void>;
   createProduct: (product: Omit<Product, "id">) => Promise<void>;
   updateProduct: (productId: string, product: Partial<Product>) => Promise<void>;
@@ -554,7 +555,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }, (error) => {
         handleFirestoreError(error, OperationType.LIST, "users");
       });
-    } else if (currentUser) {
+    } else if (currentUser && auth?.currentUser) {
       unsubCustomers = onSnapshot(doc(db, "users", currentUser.id), (docSnap) => {
         if (docSnap.exists()) {
           const profile = { id: docSnap.id, ...docSnap.data() } as CustomerProfile;
@@ -580,7 +581,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }, (error) => {
         handleFirestoreError(error, OperationType.LIST, "orders");
       });
-    } else if (currentUser) {
+    } else if (currentUser && auth?.currentUser && currentUser.status === "approved") {
       const q = query(ordersCol, where("customerId", "==", currentUser.id));
       unsubOrders = onSnapshot(q, (snapshot) => {
         const items: Order[] = [];
@@ -595,7 +596,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Load pricing tiers (available to all signed-in users)
     let unsubTiers = () => {};
-    if (currentUser) {
+    if (currentUser && auth?.currentUser && currentUser.status === "approved") {
       unsubTiers = onSnapshot(collection(db, "pricingTiers"), (snapshot) => {
         const items: PricingTier[] = [];
         snapshot.forEach((d) => {
@@ -614,11 +615,15 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [isFirebase, currentUser?.id, isAdmin]);
 
   // Auth actions
-  const register = async (email: string, companyName: string, deliveryAddress: string) => {
+  const register = async (email: string, password: string, companyName: string, deliveryAddress: string) => {
     const formattedEmail = email.trim().toLowerCase();
     
     if (isFirebase && isFirebaseAvailable) {
       try {
+        // Create user in Firebase Auth first
+        const userCredential = await createUserWithEmailAndPassword(auth, formattedEmail, password);
+        const user = userCredential.user;
+
         const newUserProfile: Omit<CustomerProfile, "id"> = {
           email: formattedEmail,
           companyName,
@@ -628,9 +633,9 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           allowedProducts: [],
           deliveryAddresses: [deliveryAddress]
         };
-        // In real Firebase, doc ID matches auth UID, but we can generate or add
-        const docRef = await addDoc(collection(db, "users"), newUserProfile);
-        const profile: CustomerProfile = { id: docRef.id, ...newUserProfile };
+        // Use user.uid as the document ID
+        await setDoc(doc(db, "users", user.uid), newUserProfile);
+        const profile: CustomerProfile = { id: user.uid, ...newUserProfile };
         setCurrentUser(profile);
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, "users");
@@ -807,11 +812,33 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         ? effectiveCustomer.customPricing[prod.id]
         : prod.baseWholesalePrice;
       
-      // 2. Find applicable quantity break and compute unit price
       let discountPercent = 0;
       let finalPricePerUnit = originalPrice;
+      let applied = false;
+
+      // Priority 1: Product-Specific Rate Breaks (if assigned to this customer for this product)
+      const fullCustomer = customers.find(c => c.id === effectiveCustomer.customerId) || currentUser;
+      const alignmentId = fullCustomer.productRateBreakAlignments?.[prod.id];
+      const alignedRateBreak = prod.rateBreaks?.find(rb => rb.id === alignmentId);
       
-      if (prod.quantityBreaks && prod.quantityBreaks.length > 0) {
+      if (alignedRateBreak) {
+        const applicableBreak = [...alignedRateBreak.quantityBreaks]
+          .sort((a, b) => b.minQty - a.minQty)
+          .find(qb => item.qty >= qb.minQty);
+        if (applicableBreak) {
+          if (applicableBreak.discountType === "percentage") {
+            discountPercent = applicableBreak.discountValue;
+            finalPricePerUnit = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
+          } else {
+            finalPricePerUnit = Math.max(0, originalPrice - applicableBreak.discountValue);
+            discountPercent = Math.round(((originalPrice - finalPricePerUnit) / originalPrice) * 100);
+          }
+          applied = true;
+        }
+      }
+
+      // Priority 2: Product Quantity Breaks
+      if (!applied && prod.quantityBreaks && prod.quantityBreaks.length > 0) {
         // Sort descending to find highest matched threshold
         const matchedBreak = [...prod.quantityBreaks]
           .sort((a,b) => b.minQty - a.minQty)
@@ -1035,6 +1062,41 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const customPricing = { ...c.customPricing };
           delete customPricing[productId];
           return { ...c, customPricing };
+        }
+        return c;
+      }));
+    }
+  };
+
+  const updateProductRateBreakAlignment = async (customerId: string, productId: string, rateBreakId: string | null) => {
+    if (!isAdmin && isFirebase) return;
+
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        const customerRef = doc(db, "users", customerId);
+        const snap = await getDoc(customerRef);
+        if (snap.exists()) {
+          const productRateBreakAlignments = snap.data().productRateBreakAlignments || {};
+          if (rateBreakId) {
+            productRateBreakAlignments[productId] = rateBreakId;
+          } else {
+            delete productRateBreakAlignments[productId];
+          }
+          await updateDoc(customerRef, { productRateBreakAlignments });
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${customerId}`);
+      }
+    } else {
+      setCustomers(prev => prev.map(c => {
+        if (c.id === customerId) {
+          const productRateBreakAlignments = { ...c.productRateBreakAlignments };
+          if (rateBreakId) {
+            productRateBreakAlignments[productId] = rateBreakId;
+          } else {
+            delete productRateBreakAlignments[productId];
+          }
+          return { ...c, productRateBreakAlignments };
         }
         return c;
       }));
@@ -1432,6 +1494,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         rejectCustomer,
         updateCustomerPricing,
         removeCustomerPricing,
+        updateProductRateBreakAlignment,
         toggleRestrictedProductAccess,
         createProduct,
         updateProduct,

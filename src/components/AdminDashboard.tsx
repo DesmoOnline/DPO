@@ -21,7 +21,6 @@ import {
   Pencil
 } from "lucide-react";
 import RateBreakProfileManager from "./RateBreakProfileManager";
-import WeightBreakManager from "./WeightBreakManager";
 
 export const AdminDashboard: React.FC = () => {
   const { 
@@ -32,6 +31,7 @@ export const AdminDashboard: React.FC = () => {
     rejectCustomer, 
     updateCustomerPricing, 
     removeCustomerPricing, 
+    updateProductRateBreakAlignment,
     toggleRestrictedProductAccess,
     createProduct,
     updateProduct,
@@ -46,7 +46,7 @@ export const AdminDashboard: React.FC = () => {
     updateCompanySettings
   } = usePortal();
 
-  const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products" | "company" | "quotes" | "rateBreaks" | "weightBreaks">("accounting");
+  const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products" | "company" | "quotes" | "rateBreaks">("accounting");
 
   // Company Settings State
   const [csForm, setCsForm] = useState({ ...companySettings });
@@ -94,6 +94,7 @@ export const AdminDashboard: React.FC = () => {
     stock: 0,
     allowBackorders: true,
     colors: [],
+    rateBreaks: [],
   });
   const [editProdPreviewUrl, setEditProdPreviewUrl] = useState<string | null>(null);
   const [editProdQbQty, setEditProdQbQty] = useState(10);
@@ -101,6 +102,14 @@ export const AdminDashboard: React.FC = () => {
   const [editProdQbValue, setEditProdQbValue] = useState(5);
   const [editProdColorInput, setEditProdColorInput] = useState("");
   const [isSavingEditedProduct, setIsSavingEditedProduct] = useState(false);
+
+  // Product edit modal rate breaks states
+  const [selectedRateBreakIndex, setSelectedRateBreakIndex] = useState<number | null>(null);
+  const [rateBreakName, setRateBreakName] = useState("");
+  const [rateBreakQbQty, setRateBreakQbQty] = useState(10);
+  const [rateBreakQbValueType, setRateBreakQbValueType] = useState<"percentage" | "fixed">("percentage");
+  const [rateBreakQbValue, setRateBreakQbValue] = useState(5);
+  const [rateBreakQuantityBreaks, setRateBreakQuantityBreaks] = useState<QuantityBreak[]>([]);
 
   // Preview loaded local files
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -277,12 +286,16 @@ export const AdminDashboard: React.FC = () => {
       stock: product.stock ?? 0,
       allowBackorders: product.allowBackorders ?? true,
       colors: product.colors ? [...product.colors] : [],
+      rateBreaks: product.rateBreaks ? [...product.rateBreaks] : [],
     });
     setEditProdPreviewUrl(product.imageUrl && product.imageUrl !== "placeholder" ? product.imageUrl : null);
     setEditProdQbQty(10);
     setEditProdQbValueType("percentage");
     setEditProdQbValue(5);
     setEditProdColorInput("");
+    setSelectedRateBreakIndex(null);
+    setRateBreakName("");
+    setRateBreakQuantityBreaks([]);
     setIsEditingProduct(true);
   };
 
@@ -302,12 +315,16 @@ export const AdminDashboard: React.FC = () => {
       stock: 0,
       allowBackorders: true,
       colors: [],
+      rateBreaks: [],
     });
     setEditProdPreviewUrl(null);
     setEditProdQbQty(10);
     setEditProdQbValueType("percentage");
     setEditProdQbValue(5);
     setEditProdColorInput("");
+    setSelectedRateBreakIndex(null);
+    setRateBreakName("");
+    setRateBreakQuantityBreaks([]);
     setIsSavingEditedProduct(false);
   };
 
@@ -372,11 +389,60 @@ export const AdminDashboard: React.FC = () => {
         ...editProdForm,
         quantityBreaks: editProdForm.quantityBreaks && editProdForm.quantityBreaks.length > 0 ? [...editProdForm.quantityBreaks] : [],
         colors: editProdForm.colors && editProdForm.colors.length > 0 ? [...editProdForm.colors] : [],
+        rateBreaks: editProdForm.rateBreaks && editProdForm.rateBreaks.length > 0 ? [...editProdForm.rateBreaks] : [],
       });
       closeEditProductModal();
     } finally {
       setIsSavingEditedProduct(false);
     }
+  };
+
+  const handleAddRateBreakQtyBreak = () => {
+    setRateBreakQuantityBreaks(prev => [
+      ...prev,
+      {
+        minQty: rateBreakQbQty,
+        discountType: rateBreakQbValueType,
+        discountValue: rateBreakQbValue
+      }
+    ].sort((a, b) => a.minQty - b.minQty));
+    setRateBreakQbQty(10);
+    setRateBreakQbValue(5);
+  };
+
+  const handleRemoveRateBreakQtyBreak = (idx: number) => {
+    setRateBreakQuantityBreaks(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSaveRateBreak = () => {
+    if (!rateBreakName.trim()) return;
+    const updatedRateBreaks = [...(editProdForm.rateBreaks || [])];
+    const newRateBreak = {
+      id: selectedRateBreakIndex === -1 ? `prb_${Math.random().toString(36).substr(2, 9)}` : (updatedRateBreaks[selectedRateBreakIndex!]?.id || `prb_${Math.random().toString(36).substr(2, 9)}`),
+      name: rateBreakName,
+      quantityBreaks: rateBreakQuantityBreaks
+    };
+
+    if (selectedRateBreakIndex === -1) {
+      updatedRateBreaks.push(newRateBreak);
+    } else if (selectedRateBreakIndex !== null) {
+      updatedRateBreaks[selectedRateBreakIndex] = newRateBreak;
+    }
+
+    setEditProdForm(prev => ({
+      ...prev,
+      rateBreaks: updatedRateBreaks
+    }));
+    setSelectedRateBreakIndex(null);
+    setRateBreakName("");
+    setRateBreakQuantityBreaks([]);
+  };
+
+  const handleDeleteRateBreak = (index: number) => {
+    setEditProdForm(prev => ({
+      ...prev,
+      rateBreaks: (prev.rateBreaks || []).filter((_, i) => i !== index)
+    }));
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -546,7 +612,7 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Segment Selector tabs */}
       <div className="flex items-center gap-2 overflow-x-auto max-w-full py-1 border-b border-slate-100 pb-4" id="admin_tab_selector">
-        {(["accounting", "company", "customers", "products", "quotes", "rateBreaks", "weightBreaks"] as const).map((tab) => {
+        {(["accounting", "company", "customers", "products", "quotes", "rateBreaks"] as const).map((tab) => {
           const label = tab === "accounting" 
             ? "Bookkeeping & GST" 
             : tab === "company"
@@ -557,9 +623,7 @@ export const AdminDashboard: React.FC = () => {
                   ? "Products"
                   : tab === "quotes"
                     ? `Quotes (${orders.filter(o => o.documentType === "QUOTE").length})`
-                  : tab === "rateBreaks"
-                    ? "Rate Break Profiles"
-                    : "Weight Breaks";
+                    : "Rate Break Profiles";
           const icon = tab === "accounting" 
             ? <TrendingUp className="w-4 h-4" /> 
             : tab === "company"
@@ -570,9 +634,7 @@ export const AdminDashboard: React.FC = () => {
                   ? <Wrench className="w-4 h-4" />
                   : tab === "quotes"
                     ? <FileText className="w-4 h-4" />
-                  : tab === "rateBreaks"
-                    ? <DollarSign className="w-4 h-4" />
-                    : <Scale className="w-4 h-4" />;
+                    : <DollarSign className="w-4 h-4" />;
           return (
             <button
               key={tab}
@@ -1175,47 +1237,42 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                 )}
 
-                {/* Weight Break Assignment (Only for Approved users) */}
+                {/* Rate Break Assignment (Only for Approved users) */}
                 {selectedCustomer.status === "approved" && (
                   <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 shadow-sm">
                     <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-2">
-                      Weight Break Assignments (Per Product)
+                      Rate Break Assignments (Per Product)
                     </h4>
                     <p className="text-xs text-slate-500 leading-normal">
-                      Assign weight break tiers to specific products. Customer can have multiple tiers per product (best price wins).
-                      Leave empty to use rate break profile or standard pricing.
+                      Align this customer to a specific rate break template defined on each product.
+                      If "No Rate Break" is selected, the customer will pay the standard product price.
                     </p>
                     
                     <div className="space-y-3 max-h-96 overflow-y-auto">
                       {products.map((product) => {
-                        const assignedBreaks = selectedCustomer.weightBreakAssignments?.[product.id] || [];
+                        const alignedBreakId = selectedCustomer.productRateBreakAlignments?.[product.id] || "";
+                        const availableBreaks = product.rateBreaks || [];
                         return (
-                          <div key={product.id} className="bg-slate-50 border border-slate-200 p-3 rounded-lg">
-                            <div className="mb-2">
+                          <div key={product.id} className="bg-slate-50 border border-slate-200 p-3 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div>
                               <p className="font-semibold text-xs text-slate-800 uppercase tracking-tight">{product.name}</p>
                               <p className="text-[10px] text-slate-500 font-mono">{product.sku}</p>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                              {[...Array(10)].map((_, i) => {
-                                const id = `wbt-${i + 1}`;
-                                const isAssigned = assignedBreaks.includes(id);
-                                return (
-                                  <button
-                                    key={id}
-                                    onClick={() => {
-                                      console.log(`Toggle weight break ${id} for product ${product.id}`);
-                                      alert("Weight break assignment requires backend integration");
-                                    }}
-                                    className={`px-3 py-1.5 rounded text-xs font-semibold transition ${
-                                      isAssigned
-                                        ? "bg-blue-600 text-white border-blue-600"
-                                        : "bg-white border border-slate-300 text-slate-700 hover:border-blue-400"
-                                    }`}
-                                  >
-                                    Tier {i + 1}
-                                  </button>
-                                );
-                              })}
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={alignedBreakId}
+                                onChange={(e) => {
+                                  updateProductRateBreakAlignment(selectedCustomer.id, product.id, e.target.value || null);
+                                }}
+                                className="bg-white border border-slate-250 rounded-lg p-2 text-xs font-mono text-slate-800 focus:outline-none focus:border-blue-500 transition min-w-[200px]"
+                              >
+                                <option value="">Standard Price (No Rate Break)</option>
+                                {availableBreaks.map((rb) => (
+                                  <option key={rb.id} value={rb.id}>
+                                    {rb.name} ({rb.quantityBreaks.length} tiers)
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                           </div>
                         );
@@ -1774,10 +1831,7 @@ export const AdminDashboard: React.FC = () => {
         <RateBreakProfileManager />
       )}
 
-      {/* Tab Content: Weight Breaks */}
-      {activeSubTab === "weightBreaks" && (
-        <WeightBreakManager />
-      )}
+
 
       {quoteShippingOrderId && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setQuoteShippingOrderId(null)}>
@@ -2020,6 +2074,158 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Rate Breaks Editor Section */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                  <p className="text-[10px] font-mono text-slate-500 uppercase font-semibold tracking-wider">Product-Specific Rate Breaks (Max 6)</p>
+                  {selectedRateBreakIndex === null && (
+                    <button
+                      type="button"
+                      disabled={(editProdForm.rateBreaks || []).length >= 6}
+                      onClick={() => {
+                        setSelectedRateBreakIndex(-1);
+                        setRateBreakName("");
+                        setRateBreakQuantityBreaks([]);
+                      }}
+                      className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50"
+                    >
+                      + Add Rate Break
+                    </button>
+                  )}
+                </div>
+
+                {selectedRateBreakIndex !== null ? (
+                  <div className="space-y-3 bg-white p-4 border border-slate-200 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
+                        {selectedRateBreakIndex === -1 ? "New Custom Rate Break" : `Editing Rate Break #${selectedRateBreakIndex + 1}`}
+                      </h4>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Rate Break Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. VIP Tier 1"
+                        value={rateBreakName}
+                        onChange={(e) => setRateBreakName(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 border-t border-slate-100 pt-3">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Add Quantity Break Tier</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                        <input
+                          type="number"
+                          min="2"
+                          value={rateBreakQbQty}
+                          onChange={(e) => setRateBreakQbQty(Math.max(2, parseInt(e.target.value) || 2))}
+                          className="bg-white border border-slate-200 rounded-lg p-2 text-xs font-mono focus:outline-none focus:border-blue-500"
+                          placeholder="Min Qty"
+                        />
+                        <select
+                          value={rateBreakQbValueType}
+                          onChange={(e) => setRateBreakQbValueType(e.target.value as "percentage" | "fixed")}
+                          className="bg-white border border-slate-200 rounded-lg p-2 text-xs font-mono focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="percentage">% Off</option>
+                          <option value="fixed">Fixed $</option>
+                        </select>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={rateBreakQbValue}
+                          onChange={(e) => setRateBreakQbValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="bg-white border border-slate-200 rounded-lg p-2 text-xs font-mono focus:outline-none focus:border-blue-500"
+                          placeholder="Value"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddRateBreakQtyBreak}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg text-xs font-bold uppercase"
+                        >
+                          Add Tier
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {rateBreakQuantityBreaks.length === 0 ? (
+                        <p className="text-[10px] text-slate-400 font-mono uppercase">No quantity breaks added yet</p>
+                      ) : (
+                        rateBreakQuantityBreaks.map((qb, index) => (
+                          <div key={`${qb.minQty}-${index}`} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono">
+                            <span>Qty {qb.minQty}+ {qb.discountType === "fixed" ? `$${qb.discountValue}` : `${qb.discountValue}%`} off</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveRateBreakQtyBreak(index)}
+                              className="text-red-600 font-bold"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRateBreakIndex(null)}
+                        className="px-3 py-1.5 rounded border border-slate-200 text-slate-650 hover:bg-slate-50 text-[10px] font-bold uppercase tracking-wider font-mono"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveRateBreak}
+                        disabled={!rateBreakName.trim()}
+                        className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 font-mono"
+                      >
+                        Save Rate Break
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {(editProdForm.rateBreaks || []).length === 0 ? (
+                      <p className="text-[10px] text-slate-400 font-mono uppercase py-2">No product-specific rate breaks configured</p>
+                    ) : (
+                      (editProdForm.rateBreaks || []).map((rb, index) => (
+                        <div key={rb.id} className="bg-white border border-slate-200 rounded-lg p-3 flex justify-between items-center text-xs font-mono">
+                          <div>
+                            <p className="font-bold text-slate-800">{rb.name}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">{rb.quantityBreaks.length} quantity breaks</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedRateBreakIndex(index);
+                                setRateBreakName(rb.name);
+                                setRateBreakQuantityBreaks(rb.quantityBreaks ? [...rb.quantityBreaks] : []);
+                              }}
+                              className="text-blue-600 font-bold hover:underline"
+                            >
+                              EDIT
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRateBreak(index)}
+                              className="text-red-650 font-bold hover:underline"
+                            >
+                              DELETE
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-200">

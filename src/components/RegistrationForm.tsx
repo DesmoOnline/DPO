@@ -13,18 +13,30 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSuccess, o
   const [email, setEmail] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [registered, setRegistered] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !companyName || !deliveryAddress) return;
+    if (!email || !companyName || !deliveryAddress || !password || !confirmPassword) return;
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
 
     setIsSubmitting(true);
     setError(null);
     try {
-      await register(email, companyName, deliveryAddress);
+      await register(email, password, companyName, deliveryAddress);
       setRegistered(true);
       setTimeout(() => {
         onSuccess();
@@ -105,6 +117,36 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSuccess, o
                 placeholder="E.g., 42 Industrial Rd, Welshpool WA 6106"
                 value={deliveryAddress}
                 onChange={(e) => setDeliveryAddress(e.target.value)}
+                className="w-full bg-white border border-slate-250 rounded-lg p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition font-medium"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="reg_password" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-semibold block">
+                Password:
+              </label>
+              <input
+                id="reg_password"
+                type="password"
+                required
+                placeholder="Min 6 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-white border border-slate-250 rounded-lg p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition font-medium"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="reg_confirm_password" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-semibold block">
+                Confirm Password:
+              </label>
+              <input
+                id="reg_confirm_password"
+                type="password"
+                required
+                placeholder="Re-enter password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 className="w-full bg-white border border-slate-250 rounded-lg p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition font-medium"
               />
             </div>

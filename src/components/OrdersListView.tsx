@@ -155,7 +155,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
     <div className="space-y-8" id="orders_list_container">
       <div className="space-y-2">
         <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-          {isAdmin ? "Master Wholesale Ledger" : "My Quotes & Invoices"}
+          {isAdmin ? "Master Wholesale Ledger" : "My Q & I"}
         </h2>
         <p className="text-xs text-slate-500 uppercase font-mono font-semibold tracking-wider">
           {isAdmin 
