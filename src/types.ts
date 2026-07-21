@@ -12,6 +12,7 @@ export type DocumentStatus =
   | "quote_requested"
   | "quote_finalized"
   | "pending_approval"
+  | "pending_payment"
   | "approved"
   | "declined"
   | "paid"
@@ -73,6 +74,10 @@ export interface Product {
   stock?: number;
   allowBackorders?: boolean;
   colors?: string[]; // Available colors for items sold by the pack
+  weightKg?: number;
+  lengthCm?: number;
+  widthCm?: number;
+  heightCm?: number;
 }
 
 export interface CustomerProfile {
@@ -115,6 +120,7 @@ export interface Order {
   totalAmount: number;
   status: DocumentStatus;
   createdAt: string;
+  approvedAt?: string;
   paidAt?: string;
   shippedAt?: string;
   notes?: string;
@@ -140,6 +146,8 @@ export interface CompanySettings {
   accountNo: string;
   accountName: string;
   orderPendingMessage: string;
+  shippingBaseRate?: number;
+  shippingPerKgRate?: number;
 }
 
 export interface GSTReportData {
@@ -151,4 +159,43 @@ export interface GSTReportData {
   pendingOrderCount: number;
   byCustomer: { [companyName: string]: { subtotal: number; gst: number; total: number; count: number } };
   byMonth: { [month: string]: { subtotal: number; gst: number; total: number } };
+}
+
+export interface Warranty {
+  id: string;
+  orderId: string;
+  customerId: string;
+  productId: string;
+  productName: string;
+  serialNumber?: string;
+  engravingPhotoUrl: string; // Base64 or Firebase Storage URL
+  submissionDate: string;
+  status: "pending" | "approved" | "rejected" | "requires_return";
+  adminNotes?: string;
+}
+
+export interface Customer360 {
+  customerId: string;
+  lifetimeValue: number;
+  totalOrders: number;
+  averageOrderValue: number;
+  purchaseHistory: { productId: string; qty: number; lastPurchased: string }[];
+  behaviorAnalytics: {
+    lastLogin: string;
+    frequentlyViewedCategories: string[];
+    cartAbandonmentRate: number; // percentage
+  };
+  satisfactionScore: number; // e.g. 1-100 (CSAT/NPS mock)
+  supportTickets: { id: string; subject: string; status: string; date: string }[];
+  paymentBehavior: {
+    averageDaysToPay: number;
+    latePaymentsCount: number;
+  };
+  productPreferences: string[]; // e.g. product categories or IDs they buy often
+  idealNextOrderPrediction: { productId: string; probability: number }[];
+  riskScore: number; // 0-100 (higher means risk of churn or bad credit)
+  engagementMetrics: {
+    emailOpenRate: number; // percentage
+    portalSessionsPerMonth: number;
+  };
 }

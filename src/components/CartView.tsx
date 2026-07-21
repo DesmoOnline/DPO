@@ -4,6 +4,7 @@ import { Trash2, ShoppingCart, ShoppingBag, ArrowRight, FileText, CheckCircle, U
 import { ProductPlaceholderImage } from "./ProductPlaceholderImage";
 import { getRateBreakProfile, getProductRateBreaks, calculatePriceWithRateBreaks } from "../utils/rateBreakProfileUtils";
 import { getCustomerWeightBreaksForProduct, calculatePriceWithWeightBreaks } from "../utils/weightBreakUtils";
+import { freightEngine } from "../services/freight/freightEngine";
 
 interface CartViewProps {
   onOrderCompleted: (orderId: string) => void;
@@ -18,7 +19,8 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
     removeFromCart, 
     placeOrder,
     isActualAdmin,
-    customers
+    customers,
+    companySettings
   } = usePortal();
 
   const [notes, setNotes] = useState("");
@@ -173,9 +175,28 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
     };
   });
 
+  const totalWeightKg = processedItems.reduce((acc, item) => acc + ((item.product.weightKg || 0) * item.qty), 0);
+  const totalCubicMeters = processedItems.reduce((acc, item) => {
+    const l = (item.product.lengthCm || 0) / 100;
+    const w = (item.product.widthCm || 0) / 100;
+    const h = (item.product.heightCm || 0) / 100;
+    return acc + (l * w * h) * item.qty;
+  }, 0);
+
   const subtotal = Number(processedItems.reduce((acc, item) => acc + item.totalLineAmount, 0).toFixed(2));
-  const gstAmount = Number((subtotal * 0.10).toFixed(2));
-  const totalAmount = Number((subtotal + gstAmount).toFixed(2));
+  
+  const freightInfo = freightEngine.calculateFreight({
+    subtotal,
+    totalWeightKg,
+    totalCubicMeters,
+    shippingBaseRate: companySettings.shippingBaseRate,
+    shippingPerKgRate: companySettings.shippingPerKgRate
+  });
+
+  const activeFreightCharge = ownTransport ? 0 : freightInfo.charge;
+
+  const gstAmount = Number(((subtotal + activeFreightCharge) * 0.10).toFixed(2));
+  const totalAmount = Number((subtotal + activeFreightCharge + gstAmount).toFixed(2));
 
   // Build the onBehalfOf parameter for admin orders
   const getOnBehalfOf = () => {
@@ -588,6 +609,16 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
               <div className="flex justify-between">
                 <span>Subtotal (ex. GST):</span>
                 <span className="text-slate-900 font-bold">${subtotal.toFixed(2)} AUD</span>
+              </div>
+              <div className="flex justify-between text-slate-500">
+                <span>Total Weight:</span>
+                <span className="font-bold">{totalWeightKg.toFixed(2)} KG</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Shipping (ex. GST):</span>
+                <span className="text-slate-900 font-bold">
+                  {ownTransport ? "Customer Collection (0.00)" : (freightInfo.isFreeFreight ? "FREE" : `$${activeFreightCharge.toFixed(2)} AUD`)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>GST (Tax 10%):</span>

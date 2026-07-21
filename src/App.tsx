@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState } from "react";
 import { PortalProvider, usePortal } from "./context/PortalContext";
 import { Header } from "./components/Header";
@@ -15,34 +10,34 @@ import { OrdersListView } from "./components/OrdersListView";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { RegistrationForm } from "./components/RegistrationForm";
 import { LoginView } from "./components/LoginView";
-import { 
-  ShieldCheck, 
-  Settings, 
-  HelpCircle, 
-  Info,
-  Wrench,
-  WrenchIcon
-} from "lucide-react";
+import { WarrantyView } from "./components/WarrantyView";
+import { ToastProvider } from "./components/ui/ToastContext";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { QuickOrderModal } from "./components/QuickOrderModal";
+import { OrderTemplateModal } from "./components/OrderTemplateModal";
+import { EditProductModal } from "./components/EditProductModal";
+import { ShieldCheck, Wrench } from "lucide-react";
 
 function AppContent() {
-  const { currentUser, isAdmin } = usePortal();
+  const { currentUser, isAdmin, products, cart, addToCart, replaceCart } = usePortal();
   
-  // Navigation tabs: "catalog" | "cart" | "orders" | "admin" | "registration"
   const [activeTab, setActiveTab] = useState<string>("catalog");
   const [ledgerSearchQuery, setLedgerSearchQuery] = useState("");
   
-  // Sub-detail view states
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [selectedPackingSlipId, setSelectedPackingSlipId] = useState<string | null>(null);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
-  // Helper callbacks to jump between detailed views
+  const [isQuickOrderOpen, setIsQuickOrderOpen] = useState(false);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
+
   const handleOpenProductDetail = (prodId: string | null) => {
     setSelectedProductId(prodId);
     setSelectedInvoiceId(null);
     setSelectedPackingSlipId(null);
     if (prodId) {
-      setActiveTab("catalog"); // Details is nested in catalog
+      setActiveTab("catalog");
     }
   };
 
@@ -50,7 +45,7 @@ function AppContent() {
     setSelectedInvoiceId(orderId);
     setSelectedPackingSlipId(null);
     setSelectedProductId(null);
-    setActiveTab("orders"); // Invoices is nested under orders
+    setActiveTab("orders");
   };
 
   const handleOpenPackingSlip = (orderId: string) => {
@@ -72,9 +67,7 @@ function AppContent() {
     setSelectedProductId(null);
   };
 
-  // Main Page View Switcher
   const renderMainContent = () => {
-    // 1. If currently registering
     if (activeTab === "registration") {
       return (
         <RegistrationForm
@@ -93,7 +86,6 @@ function AppContent() {
       );
     }
 
-    // 2. If viewing a specific Packing Slip Detail
     if (activeTab === "orders" && selectedPackingSlipId) {
       return (
         <PackingSlipDetail
@@ -104,7 +96,6 @@ function AppContent() {
       );
     }
 
-    // 3. If viewing a specific Invoice Detail
     if (activeTab === "orders" && selectedInvoiceId) {
       return (
         <InvoiceDetail
@@ -115,7 +106,6 @@ function AppContent() {
       );
     }
 
-    // 4. If viewing a Product Detail page
     if (activeTab === "catalog" && selectedProductId) {
       return (
         <ProductDetailPage
@@ -125,7 +115,6 @@ function AppContent() {
       );
     }
 
-    // Standard tab navigations
     switch (activeTab) {
       case "cart":
         return (
@@ -134,6 +123,8 @@ function AppContent() {
             onNavigateToCatalog={() => setActiveTab("catalog")}
           />
         );
+      case "warranties":
+        return <WarrantyView />;
       case "orders":
         return (
           <OrdersListView
@@ -160,13 +151,15 @@ function AppContent() {
           <CatalogView
             onOpenProductDetail={handleOpenProductDetail}
             onOpenRegistration={() => setActiveTab("registration")}
+            onOpenQuickOrder={() => setIsQuickOrderOpen(true)}
+            onEditProduct={setEditingProductId}
           />
         );
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-black font-sans flex flex-col justify-between" id="app_body_wrapper">
+    <div className="min-h-screen bg-white text-slate-900 font-sans flex flex-col justify-between" id="app_body_wrapper">
       <div className="space-y-0">
         <Header 
           activeTab={activeTab} 
@@ -175,27 +168,54 @@ function AppContent() {
           searchQuery={ledgerSearchQuery}
           onSearchQueryChange={setLedgerSearchQuery}
           onSearchSubmit={handleSearchSubmit}
+          onOpenQuickOrder={() => setIsQuickOrderOpen(true)}
+          onOpenTemplates={() => setIsTemplatesOpen(true)}
         />
 
-        <main className="max-w-7xl mx-auto px-4 py-12 w-full flex-1 min-h-[500px]">
+        <main className="max-w-7xl mx-auto px-4 py-8 w-full flex-1 min-h-[500px]">
           {renderMainContent()}
         </main>
       </div>
 
-      {/* Corporate Info Footer */}
-      <footer className="bg-black text-white py-10 px-6 text-xs font-mono border-t-8 border-orange-600" id="app_footer">
+      <QuickOrderModal
+        isOpen={isQuickOrderOpen}
+        onClose={() => setIsQuickOrderOpen(false)}
+        products={products}
+        onAddToCart={(prod, qty) => addToCart(prod, qty)}
+      />
+
+      <OrderTemplateModal
+        isOpen={isTemplatesOpen}
+        onClose={() => setIsTemplatesOpen(false)}
+        currentCartItems={cart}
+        products={products}
+        onLoadTemplate={(items) => {
+          if (replaceCart) {
+            replaceCart(items);
+          }
+        }}
+      />
+
+      {editingProductId && (
+        <EditProductModal 
+          product={products.find(p => p.id === editingProductId)!} 
+          onClose={() => setEditingProductId(null)} 
+        />
+      )}
+
+      <footer className="bg-slate-900 text-slate-300 py-8 px-6 text-xs font-mono border-t-4 border-blue-600" id="app_footer">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="bg-orange-600 text-white p-1 rounded-none">
-              <Wrench className="w-4 h-4 text-black font-black" />
+            <div className="bg-blue-600 text-white p-1.5 rounded-lg">
+              <Wrench className="w-4 h-4 font-black" />
             </div>
-            <span className="font-bold uppercase tracking-wider">© 2026 Desmo Products Pty Ltd • ALL RIGHTS RESERVED • WHOLESALE PORTAL v2.1</span>
+            <span className="font-bold uppercase tracking-wider">© 2026 Desmo Products Pty Ltd • ALL RIGHTS RESERVED • WORLD-CLASS B2B PORTAL v3.0</span>
           </div>
 
           <div className="flex gap-4 font-bold uppercase tracking-wider">
-            <a href="mailto:lew@desmoproducts.com.au" className="text-orange-600 hover:underline transition">Contact Lew (HQ)</a>
+            <a href="mailto:lew@desmoproducts.com.au" className="text-blue-400 hover:underline transition">Contact Lew (HQ)</a>
             <span>•</span>
-            <span className="text-slate-400">AES-256 SECURED • 10% AUSTRALIAN GST INCLUDED</span>
+            <span className="text-slate-400">10% AUSTRALIAN GST INCLUDED</span>
           </div>
         </div>
       </footer>
@@ -205,8 +225,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <PortalProvider>
-      <AppContent />
-    </PortalProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <PortalProvider>
+          <AppContent />
+        </PortalProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }

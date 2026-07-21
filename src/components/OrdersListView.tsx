@@ -1,7 +1,25 @@
 import React, { useState } from "react";
 import { usePortal } from "../context/PortalContext";
 import { Order } from "../types";
-import { Search, FileText, Truck, Calendar, DollarSign, Filter, ShieldAlert, CheckCircle, XCircle, Ban, Pencil, Package, ClipboardList } from "lucide-react";
+import { 
+  Search, 
+  FileText, 
+  Truck, 
+  Calendar, 
+  DollarSign, 
+  Filter, 
+  ShieldAlert, 
+  CheckCircle, 
+  XCircle, 
+  Ban, 
+  Pencil, 
+  Package, 
+  ClipboardList,
+  List,
+  LayoutList,
+  FileCheck,
+  ArrowUpDown
+} from "lucide-react";
 import { EditOrderModal } from "./EditOrderModal";
 
 interface OrdersListViewProps {
@@ -14,6 +32,9 @@ interface OrdersListViewProps {
 export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, onViewPackingSlip, searchQuery, onSearchQueryChange }) => {
   const { orders, isAdmin, currentUser, approveOrder, declineOrder, updateOrderStatus, updateOrderDispatch, addShippingCharge } = usePortal();
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<"standard" | "detailed" | "invoice_only" | "quote_only">("standard");
+  const [sortBy, setSortBy] = useState<"date" | "amount" | "reference" | "customer" | "status">("date");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   // Shipping charge modal state
   const [shippingModalOrderId, setShippingModalOrderId] = useState<string | null>(null);
@@ -45,19 +66,42 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
     onViewPackingSlip(id);
   };
 
-  const filteredOrders = orders.filter(order => {
+  const filteredAndSortedOrders = orders.filter(order => {
     // Search filter
     const matchesSearch = 
       order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (order.documentType || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.status.toLowerCase().includes(searchQuery.toLowerCase());
+      order.status.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (order.items || []).some(item => item.productName.toLowerCase().includes(searchQuery.toLowerCase()) || item.sku.toLowerCase().includes(searchQuery.toLowerCase()));
 
     // Status filter
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    // View mode document type filter
+    let matchesDocType = true;
+    if (viewMode === "invoice_only") {
+      matchesDocType = order.documentType !== "QUOTE";
+    } else if (viewMode === "quote_only") {
+      matchesDocType = order.documentType === "QUOTE";
+    }
+
+    return matchesSearch && matchesStatus && matchesDocType;
+  }).sort((a, b) => {
+    let comparison = 0;
+    if (sortBy === "date") {
+      comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    } else if (sortBy === "amount") {
+      comparison = a.totalAmount - b.totalAmount;
+    } else if (sortBy === "reference") {
+      comparison = a.id.localeCompare(b.id);
+    } else if (sortBy === "customer") {
+      comparison = a.companyName.localeCompare(b.companyName);
+    } else if (sortBy === "status") {
+      comparison = a.status.localeCompare(b.status);
+    }
+    return sortOrder === "asc" ? comparison : -comparison;
   });
 
   const getStatusBadge = (status: Order["status"]) => {
@@ -155,7 +199,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
     <div className="space-y-8" id="orders_list_container">
       <div className="space-y-2">
         <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-          {isAdmin ? "Master Wholesale Ledger" : "My Q & I"}
+          {isAdmin ? "Master Wholesale Ledger" : "Quotes & Invoices"}
         </h2>
         <p className="text-xs text-slate-500 uppercase font-mono font-semibold tracking-wider">
           {isAdmin 
@@ -164,38 +208,131 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
         </p>
       </div>
 
-      {/* Filters Bar */}
-      <div className="bg-white border border-slate-200 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm" id="orders_filters">
-        <div className="relative w-full sm:max-w-xs font-mono font-semibold">
-          <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
-          <input
-            id="orders_search_input"
-            type="text"
-            placeholder={isAdmin ? "Search by invoice, company or email..." : "Search by quote or invoice..."}
-            value={searchQuery}
-            onChange={(e) => onSearchQueryChange(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-250 rounded-lg text-slate-800 text-xs placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition font-medium"
-          />
+      {/* View Mode & Filter Toolbar */}
+      <div className="bg-white border border-slate-200 p-4 rounded-xl space-y-4 shadow-sm" id="orders_toolbar">
+        {/* Row 1: View Mode Tabs */}
+        <div className="flex items-center justify-between gap-3 flex-wrap border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-full">
+            <button
+              id="view_mode_standard"
+              onClick={() => setViewMode("standard")}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold font-mono transition whitespace-nowrap ${
+                viewMode === "standard" 
+                  ? "bg-blue-600 text-white shadow-sm font-bold" 
+                  : "bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <List className="w-3.5 h-3.5" />
+              List View Standard
+            </button>
+            <button
+              id="view_mode_detailed"
+              onClick={() => setViewMode("detailed")}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold font-mono transition whitespace-nowrap ${
+                viewMode === "detailed" 
+                  ? "bg-blue-600 text-white shadow-sm font-bold" 
+                  : "bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+              List View Detailed
+            </button>
+            <button
+              id="view_mode_invoice_only"
+              onClick={() => setViewMode("invoice_only")}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold font-mono transition whitespace-nowrap ${
+                viewMode === "invoice_only" 
+                  ? "bg-blue-600 text-white shadow-sm font-bold" 
+                  : "bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Invoice Only ({orders.filter(o => o.documentType !== "QUOTE").length})
+            </button>
+            <button
+              id="view_mode_quote_only"
+              onClick={() => setViewMode("quote_only")}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold font-mono transition whitespace-nowrap ${
+                viewMode === "quote_only" 
+                  ? "bg-blue-600 text-white shadow-sm font-bold" 
+                  : "bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <FileCheck className="w-3.5 h-3.5" />
+              Quote Only ({orders.filter(o => o.documentType === "QUOTE").length})
+            </button>
+          </div>
+
+          <div className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-md">
+            Showing {filteredAndSortedOrders.length} of {orders.length} Records
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 self-stretch sm:self-auto font-mono text-xs">
-          <Filter className="w-4 h-4 text-slate-450" />
-          <select
-            id="orders_status_filter"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-white text-xs text-slate-700 border border-slate-250 rounded-lg px-3 py-2 font-mono font-semibold uppercase outline-none focus:border-blue-500 transition shadow-sm"
-          >
-            <option value="all">All States</option>
-            <option value="quote_requested">Quote Requested</option>
-            <option value="quote_finalized">Quote Finalized</option>
-            <option value="pending_approval">Awaiting Approval</option>
-            <option value="approved">Approved (Unpaid)</option>
-            <option value="declined">Declined</option>
-            <option value="paid">Paid</option>
-            <option value="shipped">Shipped</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+        {/* Row 2: Search, Filters & Sorting */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+          {/* Search Box */}
+          <div className="relative w-full md:max-w-xs font-mono font-semibold">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+            <input
+              id="orders_search_input"
+              type="text"
+              placeholder="Search reference, company, item SKU..."
+              value={searchQuery}
+              onChange={(e) => onSearchQueryChange(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-250 rounded-lg text-slate-800 text-xs placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition font-medium"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto font-mono text-xs">
+            {/* Status Filter */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-250 rounded-lg px-2.5 py-1.5">
+              <Filter className="w-3.5 h-3.5 text-slate-500" />
+              <select
+                id="orders_status_filter"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-transparent text-xs text-slate-800 font-semibold uppercase outline-none focus:ring-0 cursor-pointer"
+              >
+                <option value="all">All States</option>
+                <option value="quote_requested">Quote Requested</option>
+                <option value="quote_finalized">Quote Finalized</option>
+                <option value="pending_approval">Awaiting Approval</option>
+                <option value="approved">Approved (Unpaid)</option>
+                <option value="declined">Declined</option>
+                <option value="paid">Paid</option>
+                <option value="shipped">Shipped</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            {/* Sort Field Selector */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-250 rounded-lg px-2.5 py-1.5">
+              <span className="text-[10px] text-slate-500 font-bold uppercase">Sort:</span>
+              <select
+                id="orders_sort_by"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="bg-transparent text-xs text-slate-800 font-semibold uppercase outline-none focus:ring-0 cursor-pointer"
+              >
+                <option value="date">Date Issued</option>
+                <option value="amount">Total Amount ($)</option>
+                <option value="reference">Reference ID</option>
+                <option value="customer">Customer / Company</option>
+                <option value="status">Status</option>
+              </select>
+            </div>
+
+            {/* Sort Order Direction Toggle Button */}
+            <button
+              id="orders_sort_order_toggle"
+              onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
+              className="flex items-center gap-1 bg-slate-50 border border-slate-250 hover:bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold font-mono transition shadow-sm"
+              title={`Sort ${sortOrder === "asc" ? "Ascending" : "Descending"}`}
+            >
+              <ArrowUpDown className="w-3.5 h-3.5 text-blue-600" />
+              <span className="uppercase text-[10px] font-bold">{sortOrder === "asc" ? "ASC" : "DESC"}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -268,13 +405,153 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
         </div>
       )}
 
-      {/* Orders Grid/Table */}
-      {filteredOrders.length === 0 ? (
+      {/* Orders View (Detailed vs Standard) */}
+      {filteredAndSortedOrders.length === 0 ? (
         <div className="text-center py-20 bg-white border border-slate-200 shadow-sm rounded-xl" id="no_orders_found">
           <FileText className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-          <p className="text-slate-500 font-semibold font-mono text-xs uppercase">No matching invoices found in history.</p>
+          <p className="text-slate-500 font-semibold font-mono text-xs uppercase">No matching invoices or quotes found.</p>
+        </div>
+      ) : viewMode === "detailed" ? (
+        /* DETAILED LIST VIEW (Expanded Cards) */
+        <div className="space-y-4" id="orders_detailed_view">
+          {filteredAndSortedOrders.map((order) => (
+            <div key={order.id} id={`ledger_card_${order.id}`} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 font-mono text-xs hover:border-slate-300 transition">
+              {/* Card Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="text-base font-bold text-slate-900 font-mono">{order.id}</span>
+                  {order.documentType === "QUOTE" ? (
+                    <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-bold uppercase">Quote</span>
+                  ) : (
+                    <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-bold uppercase">Invoice</span>
+                  )}
+                  {order.ownTransport && (
+                    <span className="text-[9px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full font-bold uppercase">Own Transport</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  {getStatusBadge(order.status)}
+                  <span className="text-slate-500 font-semibold text-[11px]">{formatDate(order.createdAt)}</span>
+                </div>
+              </div>
+
+              {/* Customer Info & Freight Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50/70 p-3.5 rounded-lg border border-slate-200/80">
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Customer / Company</p>
+                  <p className="font-bold text-slate-800 text-sm font-sans uppercase mt-0.5">{order.companyName}</p>
+                  <p className="text-slate-500 text-xs mt-0.5 font-medium">{order.customerEmail}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Delivery Address & Transport</p>
+                  <p className="text-slate-700 font-medium text-xs mt-0.5">{order.deliveryAddress || "Standard Account Address"}</p>
+                  <p className="text-slate-500 text-[11px] mt-0.5">
+                    Logistics: <strong className="text-slate-800">{order.ownTransport ? "Customer Freight Pickup" : (order.freightCompany || "Standard Courier")}</strong>
+                    {order.consignmentNote && <span className="ml-2 font-mono text-blue-600 font-bold">(Con: {order.consignmentNote})</span>}
+                  </p>
+                </div>
+              </div>
+
+              {/* Items List Table */}
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <table className="w-full text-left font-mono text-[11px]">
+                  <thead className="bg-slate-100 text-slate-600 uppercase text-[9px] border-b border-slate-200">
+                    <tr>
+                      <th className="p-2.5">Item Description</th>
+                      <th className="p-2.5 text-center">SKU</th>
+                      <th className="p-2.5 text-center">Qty</th>
+                      <th className="p-2.5 text-right">Unit Price (ex. GST)</th>
+                      <th className="p-2.5 text-right">Total Line</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(order.items || []).map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/60">
+                        <td className="p-2.5 font-sans font-bold text-slate-800">{item.productName}</td>
+                        <td className="p-2.5 text-center font-mono text-slate-500">{item.sku}</td>
+                        <td className="p-2.5 text-center font-bold">{item.qty}</td>
+                        <td className="p-2.5 text-right">${item.finalPricePerUnit.toFixed(2)}</td>
+                        <td className="p-2.5 text-right font-bold text-slate-900">${item.totalLineAmount.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals & Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 border-t border-slate-100">
+                <div className="text-xs space-x-3 font-mono">
+                  <span>Subtotal: <strong className="text-slate-800">${order.subtotal.toFixed(2)}</strong></span>
+                  <span>Freight: <strong className="text-slate-800">${(order.shippingCharge || 0).toFixed(2)}</strong></span>
+                  <span>GST: <strong className="text-slate-800">${order.gstAmount.toFixed(2)}</strong></span>
+                  <span className="text-sm font-bold text-blue-600">Total: ${order.totalAmount.toFixed(2)}</span>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <button
+                    onClick={() => onViewInvoice(order.id)}
+                    className="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 py-1.5 px-3 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-slate-550" />
+                    View {order.documentType === "QUOTE" ? "Quote" : "Invoice"}
+                  </button>
+
+                  {isAdmin && (
+                    <button
+                      onClick={() => {
+                        const o = orders.find(x => x.id === order.id);
+                        setFreightCompany(o?.freightCompany || "Team Global Express");
+                        setConsignmentNote(o?.consignmentNote || "");
+                        setFreightModalOrderId(order.id);
+                      }}
+                      className="border border-slate-200 bg-slate-800 hover:bg-slate-900 text-white py-1.5 px-3 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1"
+                    >
+                      <Truck className="w-3.5 h-3.5 text-slate-300" />
+                      Slip
+                    </button>
+                  )}
+
+                  {isAdmin && order.status === "pending_approval" && (
+                    <>
+                      <button
+                        onClick={() => approveOrder(order.id)}
+                        className="border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
+                      >
+                        <CheckCircle className="w-3 h-3" /> Approve
+                      </button>
+                      <button
+                        onClick={() => declineOrder(order.id)}
+                        className="border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
+                      >
+                        <XCircle className="w-3 h-3" /> Decline
+                      </button>
+                    </>
+                  )}
+
+                  {isAdmin && order.status !== "cancelled" && order.status !== "shipped" && (
+                    <button
+                      onClick={() => setEditModalOrderId(order.id)}
+                      className="border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
+                    >
+                      <Pencil className="w-3 h-3" /> Edit
+                    </button>
+                  )}
+
+                  {isAdmin && order.status !== "cancelled" && order.status !== "shipped" && order.status !== "declined" && (
+                    <button
+                      onClick={() => updateOrderStatus(order.id, "cancelled")}
+                      className="border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-600 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
+                    >
+                      <Ban className="w-3 h-3" /> Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
+        /* STANDARD LIST VIEW (High-Density Table) */
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm" id="orders_table_wrapper">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs font-mono font-medium">
@@ -290,7 +567,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {filteredOrders.map((order) => (
+                {filteredAndSortedOrders.map((order) => (
                   <tr key={order.id} id={`ledger_row_${order.id}`} className="hover:bg-slate-50/50 transition">
                     <td className="px-5 py-4 font-bold text-slate-900">
                       {order.id}

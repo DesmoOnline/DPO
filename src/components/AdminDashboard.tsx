@@ -18,15 +18,21 @@ import {
   Scale,
   FileText,
   Truck,
-  Pencil
+  Pencil,
+  Wifi,
+  WifiOff
 } from "lucide-react";
 import RateBreakProfileManager from "./RateBreakProfileManager";
+import { Customer360View } from "./Customer360View";
+import { WarrantyAdminPanel } from "./WarrantyAdminPanel";
+import { Warranty } from "../types";
 
 export const AdminDashboard: React.FC = () => {
   const { 
     customers, 
     products, 
     orders, 
+    isOnline,
     approveCustomer, 
     rejectCustomer, 
     updateCustomerPricing, 
@@ -46,7 +52,7 @@ export const AdminDashboard: React.FC = () => {
     updateCompanySettings
   } = usePortal();
 
-  const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products" | "company" | "quotes" | "rateBreaks">("accounting");
+  const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products" | "company" | "shipping" | "quotes" | "rateBreaks" | "warranties">("accounting");
 
   // Company Settings State
   const [csForm, setCsForm] = useState({ ...companySettings });
@@ -71,6 +77,10 @@ export const AdminDashboard: React.FC = () => {
   const [newProdStock, setNewProdStock] = useState(50);
   const [newProdAllowBackorders, setNewProdAllowBackorders] = useState(true);
   const [newProdAutoApprove, setNewProdAutoApprove] = useState(false);
+  const [newProdWeightKg, setNewProdWeightKg] = useState(1.5);
+  const [newProdLengthCm, setNewProdLengthCm] = useState(20);
+  const [newProdWidthCm, setNewProdWidthCm] = useState(15);
+  const [newProdHeightCm, setNewProdHeightCm] = useState(10);
   
   const [newProdQbQty, setNewProdQbQty] = useState(10);
   const [newProdQbValueType, setNewProdQbValueType] = useState<"percentage" | "fixed">("percentage");
@@ -500,7 +510,11 @@ export const AdminDashboard: React.FC = () => {
       category: newProdCategory,
       quantityBreaks: newProdQtyBreaks,
       stock: Number(newProdStock),
-      allowBackorders: newProdAllowBackorders
+      allowBackorders: newProdAllowBackorders,
+      weightKg: Number(newProdWeightKg),
+      lengthCm: Number(newProdLengthCm),
+      widthCm: Number(newProdWidthCm),
+      heightCm: Number(newProdHeightCm)
     });
 
     setNewProdName("");
@@ -513,6 +527,10 @@ export const AdminDashboard: React.FC = () => {
     setNewProdAutoApprove(false);
     setNewProdStock(50);
     setNewProdAllowBackorders(true);
+    setNewProdWeightKg(1.5);
+    setNewProdLengthCm(20);
+    setNewProdWidthCm(15);
+    setNewProdHeightCm(10);
     setNewProdQtyBreaks([]);
     setNewProdAutoApprove(false);
   };
@@ -520,6 +538,7 @@ export const AdminDashboard: React.FC = () => {
   const handleExportBackup = () => {
     const backupData = {
       timestamp: new Date().toISOString(),
+      companySettings,
       products,
       customers,
       orders,
@@ -583,13 +602,39 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handlePatchDims = async () => {
+    for (const prod of products) {
+      if (prod.weightKg === undefined) {
+        await updateProduct(prod.id, {
+          ...prod,
+          weightKg: 1.5,
+          lengthCm: 20,
+          widthCm: 15,
+          heightCm: 10
+        });
+      }
+    }
+    alert("Products patched with default dimensions!");
+  };
+
   return (
     <div className="space-y-8" id="admin_dashboard_container">
       {/* Top Banner */}
       <div className="bg-white border border-slate-200 p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm rounded-xl" id="admin_dashboard_header">
         <div className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 bg-blue-600 text-white text-[11px] font-bold px-3 py-1 uppercase tracking-wider rounded-full">
-            Secure Admin Area
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="inline-flex items-center gap-1.5 bg-blue-600 text-white text-[11px] font-bold px-3 py-1 uppercase tracking-wider rounded-full">
+              Secure Admin Area
+            </div>
+            <div className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 uppercase tracking-wider rounded-full ${
+              isOnline ? "bg-emerald-600 text-white" : "bg-amber-600 text-white animate-pulse"
+            }`}>
+              {isOnline ? (
+                <><Wifi className="w-3 h-3" /> Live Cloud Sync</>
+              ) : (
+                <><WifiOff className="w-3 h-3" /> Offline Mode (IndexedDB Caching Active)</>
+              )}
+            </div>
           </div>
           <h2 className="text-3xl font-extrabold tracking-tight leading-tight text-slate-900 mt-1">
             Desmo Products Administrator
@@ -606,35 +651,46 @@ export const AdminDashboard: React.FC = () => {
             <Download className="w-4 h-4" />
             Backup Data
           </button>
+          <button 
+            onClick={handlePatchDims}
+            className="hidden sm:flex items-center gap-2 border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold py-2 px-4 rounded-lg text-xs uppercase tracking-wider transition shadow-sm"
+          >
+            <Wrench className="w-4 h-4" />
+            Patch Dims
+          </button>
           <Shield className="w-10 h-10 text-blue-600 hidden md:block" />
         </div>
       </div>
 
       {/* Segment Selector tabs */}
       <div className="flex items-center gap-2 overflow-x-auto max-w-full py-1 border-b border-slate-100 pb-4" id="admin_tab_selector">
-        {(["accounting", "company", "customers", "products", "quotes", "rateBreaks"] as const).map((tab) => {
+        {(["accounting", "company", "shipping", "customers", "products", "quotes", "rateBreaks", "warranties"] as const).map((tab) => {
           const label = tab === "accounting" 
             ? "Bookkeeping & GST" 
             : tab === "company"
               ? "Company Details"
-              : tab === "customers" 
-                ? `Customers (${customers.filter(c => !["lew@desmoproducts.com.au", "1@1.com"].includes(c.email)).length})` 
-                : tab === "products"
-                  ? "Products"
-                  : tab === "quotes"
-                    ? `Quotes (${orders.filter(o => o.documentType === "QUOTE").length})`
-                    : "Rate Break Profiles";
+              : tab === "shipping"
+                ? "Shipping & Freight"
+                : tab === "customers" 
+                  ? `Customers (${customers.filter(c => !["lew@desmoproducts.com.au", "1@1.com"].includes(c.email)).length})` 
+                  : tab === "products"
+                    ? "Products"
+                    : tab === "quotes"
+                      ? `Quotes (${orders.filter(o => o.documentType === "QUOTE").length})`
+                      : tab === "warranties" ? "Warranties" : "Rate Break Profiles";
           const icon = tab === "accounting" 
             ? <TrendingUp className="w-4 h-4" /> 
             : tab === "company"
               ? <Building className="w-4 h-4" />
-              : tab === "customers" 
-                ? <Users className="w-4 h-4" /> 
-                : tab === "products"
-                  ? <Wrench className="w-4 h-4" />
-                  : tab === "quotes"
-                    ? <FileText className="w-4 h-4" />
-                    : <DollarSign className="w-4 h-4" />;
+              : tab === "shipping"
+                ? <Truck className="w-4 h-4" />
+                : tab === "customers" 
+                  ? <Users className="w-4 h-4" /> 
+                  : tab === "products"
+                    ? <Wrench className="w-4 h-4" />
+                    : tab === "quotes"
+                      ? <FileText className="w-4 h-4" />
+                      : tab === "warranties" ? <Shield className="w-4 h-4" /> : <DollarSign className="w-4 h-4" />;
           return (
             <button
               key={tab}
@@ -906,6 +962,54 @@ export const AdminDashboard: React.FC = () => {
               )}
             </div>
 
+          </div>
+        </div>
+      )}
+      {/* Tab Content: Shipping Settings */}
+      {activeSubTab === "shipping" && (
+        <div className="bg-white p-8 border border-slate-200 rounded-xl shadow-sm space-y-6" id="shipping_settings_panel">
+          <div className="flex justify-between items-start border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 tracking-tight">Shipping & Freight Engine</h3>
+              <p className="text-xs text-slate-500 uppercase font-mono mt-1">Configure global shipping rates.</p>
+            </div>
+            <button
+              onClick={async () => {
+                setIsSavingCompanySettings(true);
+                await updateCompanySettings(csForm);
+                setIsSavingCompanySettings(false);
+                setCompanySettingsSaved(true);
+                setTimeout(() => setCompanySettingsSaved(false), 3000);
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-2"
+            >
+              {isSavingCompanySettings ? "Saving..." : companySettingsSaved ? <><Check className="w-4 h-4"/> Saved</> : "Save Shipping Settings"}
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-[11px] font-mono text-slate-500 uppercase tracking-widest block font-semibold">Base Freight Charge ($):</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={csForm.shippingBaseRate ?? 20}
+                onChange={e => setCsForm(prev => ({ ...prev, shippingBaseRate: parseFloat(e.target.value) || 0 }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[11px] font-mono text-slate-500 uppercase tracking-widest block font-semibold">Price per Kilogram ($):</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={csForm.shippingPerKgRate ?? 1.20}
+                onChange={e => setCsForm(prev => ({ ...prev, shippingPerKgRate: parseFloat(e.target.value) || 0 }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition text-sm"
+              />
+            </div>
           </div>
         </div>
       )}
@@ -1465,69 +1569,118 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </div>
 
+              <div className="space-y-1">
+                <label htmlFor="new_prod_stock" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Qty in Stock:</label>
+                <input
+                  id="new_prod_stock"
+                  type="number"
+                  required
+                  min="0"
+                  value={newProdStock}
+                  onChange={(e) => setNewProdStock(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="new_prod_category" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Category:</label>
+                <div className="flex items-center gap-2">
+                  <select
+                    id="new_prod_category"
+                    value={newProdCategory}
+                    onChange={(e) => setNewProdCategory(e.target.value)}
+                    className="flex-1 bg-white border border-slate-250 rounded-lg p-2.5 text-slate-850 focus:outline-none focus:border-blue-500 transition text-xs font-semibold"
+                  >
+                    {categories.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if(window.confirm(`Delete category "${newProdCategory}"?`)) {
+                        deleteCategory(newProdCategory);
+                        if(categories.length > 0) setNewProdCategory(categories[0]);
+                      }
+                    }}
+                    className="p-2.5 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition"
+                    title="Delete selected category"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <input
+                    type="text"
+                    placeholder="New Category"
+                    value={newCategoryName}
+                    onChange={e => setNewCategoryName(e.target.value)}
+                    className="flex-1 bg-white border border-slate-250 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newCategoryName.trim()) {
+                        addCategory(newCategoryName.trim());
+                        setNewProdCategory(newCategoryName.trim());
+                        setNewCategoryName("");
+                      }
+                    }}
+                    className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs font-bold text-slate-700 rounded-lg transition"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label htmlFor="new_prod_stock" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Qty in Stock:</label>
+                  <label htmlFor="new_prod_weight" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Weight (kg):</label>
                   <input
-                    id="new_prod_stock"
+                    id="new_prod_weight"
                     type="number"
-                    required
                     min="0"
-                    value={newProdStock}
-                    onChange={(e) => setNewProdStock(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition text-xs"
+                    step="0.1"
+                    value={newProdWeightKg}
+                    onChange={(e) => setNewProdWeightKg(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-slate-800 focus:outline-none focus:border-blue-500 transition text-xs"
                   />
                 </div>
-
                 <div className="space-y-1">
-                  <label htmlFor="new_prod_category" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Category:</label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      id="new_prod_category"
-                      value={newProdCategory}
-                      onChange={(e) => setNewProdCategory(e.target.value)}
-                      className="flex-1 bg-white border border-slate-250 rounded-lg p-2.5 text-slate-850 focus:outline-none focus:border-blue-500 transition text-xs font-semibold"
-                    >
-                      {categories.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if(window.confirm(`Delete category "${newProdCategory}"?`)) {
-                          deleteCategory(newProdCategory);
-                          if(categories.length > 0) setNewProdCategory(categories[0]);
-                        }
-                      }}
-                      className="p-2.5 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition"
-                      title="Delete selected category"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    <input
-                      type="text"
-                      placeholder="New Category"
-                      value={newCategoryName}
-                      onChange={e => setNewCategoryName(e.target.value)}
-                      className="flex-1 bg-white border border-slate-250 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (newCategoryName.trim()) {
-                          addCategory(newCategoryName.trim());
-                          setNewProdCategory(newCategoryName.trim());
-                          setNewCategoryName("");
-                        }
-                      }}
-                      className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs font-bold text-slate-700 rounded-lg transition"
-                    >
-                      Add
-                    </button>
-                  </div>
+                  <label htmlFor="new_prod_length" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Length (cm):</label>
+                  <input
+                    id="new_prod_length"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={newProdLengthCm}
+                    onChange={(e) => setNewProdLengthCm(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-slate-800 focus:outline-none focus:border-blue-500 transition text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="new_prod_width" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Width (cm):</label>
+                  <input
+                    id="new_prod_width"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={newProdWidthCm}
+                    onChange={(e) => setNewProdWidthCm(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-slate-800 focus:outline-none focus:border-blue-500 transition text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="new_prod_height" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Height (cm):</label>
+                  <input
+                    id="new_prod_height"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={newProdHeightCm}
+                    onChange={(e) => setNewProdHeightCm(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-slate-800 focus:outline-none focus:border-blue-500 transition text-xs"
+                  />
                 </div>
               </div>
 
@@ -1720,30 +1873,101 @@ export const AdminDashboard: React.FC = () => {
                 <tbody className="divide-y divide-slate-100 text-slate-700 font-mono">
                   {products.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50/50">
-                      <td className="px-3 py-2.5 font-sans">
-                        <p className="font-bold text-slate-800 tracking-tight text-xs">{p.name}</p>
-                        <p className="text-[10px] text-slate-500 font-mono mt-1 font-medium">{p.sku}</p>
+                      <td className="px-3 py-2.5 font-sans group">
+                        <div className="flex items-center justify-between gap-2">
+                          <p 
+                            className="font-bold text-slate-800 tracking-tight text-xs cursor-pointer hover:text-blue-600"
+                            onClick={() => openEditProductModal(p)}
+                            title="Click to edit full details"
+                          >
+                            {p.name}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => openEditProductModal(p)}
+                            className="opacity-0 group-hover:opacity-100 transition-all duration-200 bg-blue-600 hover:bg-blue-700 text-white font-bold px-2 py-0.5 rounded text-[10px] flex items-center gap-1 shadow-sm"
+                            title="Edit Product"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            Edit
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-mono mt-0.5 font-medium">{p.sku}</p>
                       </td>
-                      <td className="px-3 py-2.5 text-slate-500 font-sans uppercase text-[11px] font-medium">{p.category || "General"}</td>
-                      <td className="px-3 py-2.5 text-right font-bold text-blue-600 font-mono">${p.baseWholesalePrice.toFixed(2)}</td>
+                      
+                      {/* Inline Editable Category */}
+                      <td className="px-3 py-2.5">
+                        <select
+                          value={p.category || "General"}
+                          onChange={(e) => updateProduct(p.id, { category: e.target.value })}
+                          className="bg-transparent text-slate-700 font-sans uppercase text-[11px] font-medium border border-transparent hover:border-slate-300 rounded px-1.5 py-1 focus:bg-white focus:border-blue-500 outline-none cursor-pointer transition"
+                        >
+                          {categories.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </td>
+
+                      {/* Inline Editable Wholesale Price */}
+                      <td className="px-3 py-2.5 text-right font-mono">
+                        <div className="flex items-center justify-end">
+                          <span className="text-slate-400 font-mono text-xs mr-0.5">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            key={`${p.id}-${p.baseWholesalePrice}`}
+                            defaultValue={p.baseWholesalePrice}
+                            onBlur={(e) => {
+                              const val = parseFloat(e.target.value);
+                              if (!isNaN(val) && val >= 0 && val !== p.baseWholesalePrice) {
+                                updateProduct(p.id, { baseWholesalePrice: val });
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                            className="w-20 text-right font-bold text-blue-600 font-mono bg-transparent border border-transparent hover:border-slate-300 focus:bg-white focus:border-blue-500 rounded px-1 py-0.5 outline-none transition"
+                            title="Click to edit wholesale price"
+                          />
+                        </div>
+                      </td>
+
+                      {/* Inline Toggleable Restricted Access */}
                       <td className="px-3 py-2.5 text-center">
-                        <span className={`text-[9px] px-2 py-0.5 font-bold uppercase rounded-full ${
-                          p.isRestricted 
-                            ? "bg-red-50 text-red-650 border border-red-200" 
-                            : "bg-slate-100 text-slate-500 border border-slate-200"
-                        }`}>
+                        <button
+                          type="button"
+                          onClick={() => updateProduct(p.id, { isRestricted: !p.isRestricted })}
+                          className={`text-[9px] px-2.5 py-1 font-bold uppercase rounded-full cursor-pointer transition hover:scale-105 shadow-sm ${
+                            p.isRestricted 
+                              ? "bg-red-100 text-red-700 border border-red-300 hover:bg-red-200" 
+                              : "bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200"
+                          }`}
+                          title="Click to toggle Restricted Access (YES/NO)"
+                        >
                           {p.isRestricted ? "YES" : "NO"}
-                        </span>
+                        </button>
                       </td>
+
                       <td className="px-3 py-2.5 text-center text-slate-500 font-semibold uppercase text-[10px]">
-                        {p.quantityBreaks?.length || 0} breaks
+                        <button
+                          type="button"
+                          onClick={() => openEditProductModal(p)}
+                          className="hover:text-blue-600 hover:underline"
+                          title="Edit quantity breaks"
+                        >
+                          {p.quantityBreaks?.length || 0} breaks
+                        </button>
                       </td>
+
                       <td className="px-3 py-2.5 text-center">
                         <div className="inline-flex items-center gap-1">
                           <button
                             onClick={() => openEditProductModal(p)}
                             className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition inline-flex items-center justify-center"
-                            title="Edit Product"
+                            title="Edit Product Details"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -1946,6 +2170,25 @@ export const AdminDashboard: React.FC = () => {
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Category</label>
                       <input value={editProdForm.category || ""} onChange={(e) => setEditProdForm(prev => ({ ...prev, category: e.target.value }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Weight (kg)</label>
+                      <input type="number" min="0" step="0.1" value={editProdForm.weightKg ?? 0} onChange={(e) => setEditProdForm(prev => ({ ...prev, weightKg: Math.max(0, parseFloat(e.target.value) || 0) }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Length (cm)</label>
+                      <input type="number" min="0" step="0.1" value={editProdForm.lengthCm ?? 0} onChange={(e) => setEditProdForm(prev => ({ ...prev, lengthCm: Math.max(0, parseFloat(e.target.value) || 0) }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Width (cm)</label>
+                      <input type="number" min="0" step="0.1" value={editProdForm.widthCm ?? 0} onChange={(e) => setEditProdForm(prev => ({ ...prev, widthCm: Math.max(0, parseFloat(e.target.value) || 0) }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Height (cm)</label>
+                      <input type="number" min="0" step="0.1" value={editProdForm.heightCm ?? 0} onChange={(e) => setEditProdForm(prev => ({ ...prev, heightCm: Math.max(0, parseFloat(e.target.value) || 0) }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500" />
                     </div>
                   </div>
 
@@ -2238,6 +2481,20 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Tab Content 8: Warranties */}
+      {activeSubTab === "warranties" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Warranty Claims</h2>
+              <p className="text-sm text-slate-500">Manage customer warranty claims and returns.</p>
+            </div>
+          </div>
+          
+          <WarrantyAdminPanel />
         </div>
       )}
     </div>

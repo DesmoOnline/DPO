@@ -1,6 +1,12 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, setLogLevel } from "firebase/firestore";
+import { 
+  initializeFirestore, 
+  getFirestore, 
+  setLogLevel, 
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from "firebase/firestore";
 
 // The user's Firebase config from their Google Business Account
 export const firebaseConfig = {
@@ -25,10 +31,18 @@ try {
     app = getApp();
   }
   auth = getAuth(app);
-  db = getFirestore(app);
+  try {
+    db = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    });
+  } catch (e) {
+    db = getFirestore(app);
+  }
   setLogLevel("error");
   isFirebaseAvailable = true;
-  console.log("Firebase initialized successfully in Live Mode.");
+  console.log("Firebase initialized successfully with Persistent Offline Cache.");
 } catch (error) {
   console.warn("Failed to initialize Firebase SDK:", error);
 }

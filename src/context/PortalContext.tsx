@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Product, CustomerProfile, Order, OrderItem, QuantityBreak, CompanySettings, PricingTier, DocumentType } from "../types";
+import { Product, CustomerProfile, Order, OrderItem, QuantityBreak, CompanySettings, PricingTier, DocumentType, Customer360, Warranty } from "../types";
 import { isFirebaseAvailable, db, auth } from "../firebase";
 import { 
   collection, 
@@ -17,6 +17,7 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut, createUserWithEmailAndPassword } from "firebase/auth";
 import { generateInvoicePDF } from "../utils/pdfGenerator";
+import { freightEngine } from "../services/freight/freightEngine";
 
 // Error structure required by firebase-integration skill
 enum OperationType {
@@ -57,11 +58,16 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 interface PortalContextType {
   isFirebase: boolean;
   isFirebaseConfigured: boolean;
+  isOnline: boolean;
   currentUser: CustomerProfile | null;
   isAdmin: boolean;
   products: Product[];
   customers: CustomerProfile[];
   orders: Order[];
+  warranties: Warranty[];
+  submitWarrantyClaim: (warranty: Omit<Warranty, "id" | "status" | "submissionDate">) => Promise<void>;
+  updateWarrantyStatus: (warrantyId: string, status: Warranty["status"], adminNotes?: string) => Promise<void>;
+  getCustomer360: (customerId: string) => Customer360 | null;
   cart: { product: Product; qty: number; selectedColors?: string[] }[];
   
   // Auth actions
@@ -74,6 +80,7 @@ interface PortalContextType {
   removeFromCart: (productId: string) => void;
   updateCartQty: (productId: string, qty: number) => void;
   clearCart: () => void;
+  replaceCart?: (items: OrderItem[]) => void;
   
   // Ordering
   placeOrder: (notes?: string, onBehalfOf?: { customerId: string; customerEmail: string; companyName: string; customPricing?: { [productId: string]: number } }, ownTransport?: boolean, deliveryAddress?: string, documentMode?: DocumentType) => Promise<Order>;
@@ -132,6 +139,9 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
+  tradingName: "Desmo Products",
+  companyName: "Desmo Products Pty Ltd",
+  abn: "45 123 456 789",
   address: "123 Industrial Way, Perth WA 6000",
   email: "lew@desmoproducts.com.au",
   paymentTerms: "14 Days",
@@ -139,7 +149,9 @@ const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
   bsb: "082-124",
   accountNo: "842-104-921",
   accountName: "Desmo Products Wholesale",
-  orderPendingMessage: "Thank you for your wholesale request. Your order reference has been logged. Shipping costs will be calculated and added to this Invoice within 24 hours. Once confirmed, you will receive an approved invoice with bank deposit instructions to settle your account."
+  orderPendingMessage: "Thank you for your wholesale request. Your order reference has been logged. Shipping costs will be calculated and added to this Invoice within 24 hours. Once confirmed, you will receive an approved invoice with bank deposit instructions to settle your account.",
+  shippingBaseRate: 20.00,
+  shippingPerKgRate: 1.20
 };
 
 // Initial mock data to ensure the app is fully functional instantly
@@ -158,7 +170,11 @@ const DEFAULT_PRODUCTS: Product[] = [
     ],
     category: "Digital Meters",
     stock: 120,
-    allowBackorders: true
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
   },
   {
     id: "DP-PAT-302",
@@ -174,7 +190,11 @@ const DEFAULT_PRODUCTS: Product[] = [
     ],
     category: "Safety Compliance",
     stock: 45,
-    allowBackorders: false
+    allowBackorders: false,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
   },
   {
     id: "DP-OSC-200",
@@ -189,7 +209,11 @@ const DEFAULT_PRODUCTS: Product[] = [
     ],
     category: "Signal Analysis",
     stock: 5,
-    allowBackorders: true
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
   },
   {
     id: "DP-IRT-500",
@@ -204,7 +228,11 @@ const DEFAULT_PRODUCTS: Product[] = [
     ],
     category: "High-Voltage Diagnostics",
     stock: 80,
-    allowBackorders: false
+    allowBackorders: false,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
   },
   {
     id: "DP-CLP-600",
@@ -219,7 +247,11 @@ const DEFAULT_PRODUCTS: Product[] = [
     ],
     category: "Digital Meters",
     stock: 12,
-    allowBackorders: true
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
   },
   {
     id: "DP-LCR-100",
@@ -235,52 +267,68 @@ const DEFAULT_PRODUCTS: Product[] = [
     ],
     category: "Component Analysis",
     stock: 60,
-    allowBackorders: true
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
   },
   {
     id: "LT240A15",
     name: "CAT IV 600V Single Phase Loadtester",
     sku: "LT240A15",
-    description: "The Loadtester is used as an electrical load on kWh power meters when testing to ensure the correct operation and functionality of the meters. Incorporates fused probes with silicon leads and is housed in a compact body. Protected by an automatic thermal cut-out switch.\n\nSpecifications:\nVoltage: 240 – 250V max. 1Ø\nLoad: 1100W – 4.5amp\nInternal Fusing: 7amp\nSafety Rating: Cat IV 600V – Cat III 1000V\nCompliant to: AS: 61010.1: 2003\nWeight: 420gm\nLeads: Silicon with internal white wear indicator layer\nTest Probes: Cat III 1000V\nMotor: 1100W with thermal cut-out\nGrills: Black Nylon 15% Glass Filled\nCable Grommet: TPE 90A Shore\nBody: PC-ABS Fire Retardant – spark finish\nHook: Polished 316 S/S that allows hands free operation.",
+    description: "Purpose: Used by utility workers as an artificial electrical load to safely verify the functionality and correct operation of residential/commercial kWh power meters. Key Specs: Operates at a maximum single-phase voltage of 240–250V with an 1100W (4.5 Amp) load. It features internal 7A fusing, a safety rating of CAT IV 600V / CAT III 1000V, and compliant AS:61010.1 build safety. Build: Housed in a fire-retardant PC-ABS shell with high-visibility silicone leads featuring a white wear-indicator safety layer, plus a 316 stainless steel hook for hands-free utility field operation. Detailed specifications are viewable directly on the official Desmo Loadtester Page.",
     imageUrl: "placeholder",
     baseWholesalePrice: 430.00,
     isRestricted: false,
     autoApprove: true,
     category: "Safety Compliance",
     stock: 50,
-    allowBackorders: true
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
   },
   {
     id: "B400",
     name: "400A LV Barrier",
     sku: "B400",
-    description: "Insulated safety barrier used on the overhead network of the West Australian supply authority during switching and interconnection movements. Installed by hand or Hotstick onto the contact blade of a 400A Low Voltage isolator (disconnector) to prevent closure contact.\n\nSpecifications:\nWeight: 225gm\nMaterial: High Impact Polyethylene PVC\nLength: 310mm\nDiameter: 50mm\nAdapts to male Flowline fitting on standard Hotstick or Double Ended Fuse Extractor (FE2)",
+    description: "Purpose: A physical low-voltage isolation barrier designed to fit 400-Amp rated network infrastructure. It prevents accidental cross-phasing, short circuits, or flashovers while technicians perform live work on service panels and distribution boards.",
     imageUrl: "placeholder",
     baseWholesalePrice: 99.00,
     isRestricted: false,
     autoApprove: true,
     category: "Safety Compliance",
     stock: 100,
-    allowBackorders: true
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
   },
   {
     id: "B600",
     name: "600A LV Barrier",
     sku: "B600",
-    description: "Insulated safety barrier used on the overhead network of the West Australian supply authority during switching and interconnection movements. Installed by hand or Hotstick onto the contact blade of a 600A Low Voltage isolator (disconnector) to prevent closure contact.\n\nSpecifications:\nWeight: 200gm\nMaterial: High Impact Polyethylene PVC\nLength: 275mm\nDiameter: 50mm\nAdapts to male Flowline fitting on standard Hotstick or Double Ended Fuse Extractor (FE2)",
+    description: "Purpose: A heavy-duty version of the isolation barrier built specifically to fit standard 600-Amp low-voltage distribution frameworks. Like the 400A variant, it serves as high-dielectric physical shielding to protect field personnel from arc flashes.",
     imageUrl: "placeholder",
     baseWholesalePrice: 129.00,
     isRestricted: false,
     autoApprove: true,
     category: "Safety Compliance",
     stock: 100,
-    allowBackorders: true
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
   },
   {
-    id: "METERSEAL",
-    name: "KWh Meter Seals (Pack)",
-    sku: "METERSEAL",
-    description: "Polypropylene meter seals used as an anti-pilferage measure on KWh power meters by the Australian Supply Authorities. Can also be used for all types of sealing equipment and printed with flag symbol/logo if required.\n\nSpecifications:\nMaterial: Polypropylene\nLength: 235mm\nTag Size: 25mm x 12mm",
+    id: "METERSEAL-SIGNAL-ORANGE",
+    name: "KWh Meter Seals (Pack) - Signal Orange",
+    sku: "METERSEAL-SIGNAL-ORANGE",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
     imageUrl: "placeholder",
     baseWholesalePrice: 45.00,
     isRestricted: true,
@@ -288,22 +336,231 @@ const DEFAULT_PRODUCTS: Product[] = [
     category: "Safety Compliance",
     stock: 200,
     allowBackorders: true,
-    colors: [
-      "Signal Orange",
-      "Green",
-      "Yellow",
-      "White",
-      "Beige",
-      "Red",
-      "Pink",
-      "Purple",
-      "L/ Blue",
-      "Grey",
-      "Brown",
-      "Blue",
-      "Black",
-      "Fluoro Orange"
-    ]
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-GREEN",
+    name: "KWh Meter Seals (Pack) - Green",
+    sku: "METERSEAL-GREEN",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-YELLOW",
+    name: "KWh Meter Seals (Pack) - Yellow",
+    sku: "METERSEAL-YELLOW",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-WHITE",
+    name: "KWh Meter Seals (Pack) - White",
+    sku: "METERSEAL-WHITE",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-BEIGE",
+    name: "KWh Meter Seals (Pack) - Beige",
+    sku: "METERSEAL-BEIGE",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-RED",
+    name: "KWh Meter Seals (Pack) - Red",
+    sku: "METERSEAL-RED",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-PINK",
+    name: "KWh Meter Seals (Pack) - Pink",
+    sku: "METERSEAL-PINK",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-PURPLE",
+    name: "KWh Meter Seals (Pack) - Purple",
+    sku: "METERSEAL-PURPLE",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-LIGHT-BLUE",
+    name: "KWh Meter Seals (Pack) - L/ Blue",
+    sku: "METERSEAL-LIGHT-BLUE",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-GREY",
+    name: "KWh Meter Seals (Pack) - Grey",
+    sku: "METERSEAL-GREY",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-BROWN",
+    name: "KWh Meter Seals (Pack) - Brown",
+    sku: "METERSEAL-BROWN",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-BLUE",
+    name: "KWh Meter Seals (Pack) - Blue",
+    sku: "METERSEAL-BLUE",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-BLACK",
+    name: "KWh Meter Seals (Pack) - Black",
+    sku: "METERSEAL-BLACK",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
+  },
+  {
+    id: "METERSEAL-FLUORO-ORANGE",
+    name: "KWh Meter Seals (Pack) - Fluoro Orange",
+    sku: "METERSEAL-FLUORO-ORANGE",
+    description: "Purpose: Security and tamper-evident seals used by power distribution companies to lock kWh meter enclosures after installation or testing. They ensure secondary contractors or consumers cannot manipulate power meter configurations without breaking the visual seal code.",
+    imageUrl: "placeholder",
+    baseWholesalePrice: 45.00,
+    isRestricted: true,
+    autoApprove: false,
+    category: "Safety Compliance",
+    stock: 200,
+    allowBackorders: true,
+    weightKg: 1.5,
+    lengthCm: 20,
+    widthCm: 15,
+    heightCm: 10
   }
 ];
 
@@ -327,7 +584,7 @@ const DEFAULT_CUSTOMERS: CustomerProfile[] = [
       "DP-DMM-401": 135.00, // Custom wholesale discount
       "DP-PAT-302": 160.00
     },
-    allowedProducts: ["DP-OSC-200", "METERSEAL"] // Can see restricted oscilloscope & meter seals
+    allowedProducts: ["DP-OSC-200", "METERSEAL-SIGNAL-ORANGE", "METERSEAL-GREEN", "METERSEAL-YELLOW", "METERSEAL-WHITE", "METERSEAL-BEIGE", "METERSEAL-RED", "METERSEAL-PINK", "METERSEAL-PURPLE", "METERSEAL-LIGHT-BLUE", "METERSEAL-GREY", "METERSEAL-BROWN", "METERSEAL-BLUE", "METERSEAL-BLACK", "METERSEAL-FLUORO-ORANGE"] // Can see restricted oscilloscope & meter seals
   },
   {
     id: "sydney-power",
@@ -474,7 +731,20 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
   const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
   const [cart, setCart] = useState<{ product: Product; qty: number; selectedColors?: string[] }[]>([]);
+  const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [adminViewMode, setAdminViewMode] = useState<"admin" | "customer">("admin");
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   const adminEmails = ["lew@desmoproducts.com.au", "1@1.com"];
   const adminUids = ["rysSGhbaj8O7CIuZp0KiQsDUF", "FNmQiIOF1tccb2D1z7qfz2Vybgn2"];
@@ -487,23 +757,26 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setIsFirebase(true);
 
     // 2. Load Local Storage state for sandbox persistence
-    const localProds = localStorage.getItem("dp_sandbox_products");
-    const localCusts = localStorage.getItem("dp_sandbox_customers");
-    const localOrds = localStorage.getItem("dp_sandbox_orders");
+    const localProds = localStorage.getItem("dp_sandbox_products_v2");
+    const localCusts = localStorage.getItem("dp_sandbox_customers_v2");
+    const localOrds = localStorage.getItem("dp_sandbox_orders_v2");
     const localUser = localStorage.getItem("dp_sandbox_user");
 
     if (localProds) setProducts(JSON.parse(localProds));
-    else localStorage.setItem("dp_sandbox_products", JSON.stringify(DEFAULT_PRODUCTS));
+    else localStorage.setItem("dp_sandbox_products_v2", JSON.stringify(DEFAULT_PRODUCTS));
     
     const savedCategories = localStorage.getItem("dp_sandbox_categories");
     if (savedCategories) setCategories(JSON.parse(savedCategories));
     else localStorage.setItem("dp_sandbox_categories", JSON.stringify(DEFAULT_CATEGORIES));
 
     if (localCusts) setCustomers(JSON.parse(localCusts));
-    else localStorage.setItem("dp_sandbox_customers", JSON.stringify(DEFAULT_CUSTOMERS));
+    else localStorage.setItem("dp_sandbox_customers_v2", JSON.stringify(DEFAULT_CUSTOMERS));
 
     if (localOrds) setOrders(JSON.parse(localOrds));
-    else localStorage.setItem("dp_sandbox_orders", JSON.stringify(DEFAULT_ORDERS));
+    else localStorage.setItem("dp_sandbox_orders_v2", JSON.stringify(DEFAULT_ORDERS));
+
+    const localWarranties = localStorage.getItem("dp_sandbox_warranties");
+    if (localWarranties) setWarranties(JSON.parse(localWarranties));
 
     if (localUser) {
       setCurrentUser(JSON.parse(localUser));
@@ -517,9 +790,10 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Update sandbox storage whenever sandbox states change
   useEffect(() => {
     if (!isFirebase) {
-      localStorage.setItem("dp_sandbox_products", JSON.stringify(products));
-      localStorage.setItem("dp_sandbox_customers", JSON.stringify(customers));
-      localStorage.setItem("dp_sandbox_orders", JSON.stringify(orders));
+      localStorage.setItem("dp_sandbox_products_v2", JSON.stringify(products));
+      localStorage.setItem("dp_sandbox_customers_v2", JSON.stringify(customers));
+      localStorage.setItem("dp_sandbox_orders_v2", JSON.stringify(orders));
+      localStorage.setItem("dp_sandbox_warranties", JSON.stringify(warranties));
       if (currentUser) {
         localStorage.setItem("dp_sandbox_user", JSON.stringify(currentUser));
       } else {
@@ -538,7 +812,18 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       snapshot.forEach((doc) => {
         items.push({ id: doc.id, ...doc.data() } as Product);
       });
-      setProducts(items);
+      
+      const snapshotIds = new Set(items.map(i => i.id));
+      const missingDefaults = DEFAULT_PRODUCTS.filter(d => !snapshotIds.has(d.id));
+      const combined = [...items, ...missingDefaults];
+      setProducts(combined);
+
+      // If admin is logged in and there are missing default products in Firestore, auto-sync them up
+      if (currentUser && (currentUser.email === "lew@desmoproducts.com.au" || currentUser.email === "1@1.com")) {
+        missingDefaults.forEach((prod) => {
+          setDoc(doc(db, "products", prod.id), prod).catch(() => {});
+        });
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, "products");
     });
@@ -606,11 +891,30 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }, () => { /* silent fail – rules may block non-admins */ });
     }
 
+    
+    let unsubWarranties = () => {};
+    const warrantiesCol = collection(db, "warranties");
+    if (isAdmin) {
+      unsubWarranties = onSnapshot(warrantiesCol, (snapshot) => {
+        const items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        setWarranties(items);
+      }, () => {});
+    } else if (currentUser && auth?.currentUser && currentUser.status === "approved") {
+      const q = query(warrantiesCol, where("customerId", "==", currentUser.id));
+      unsubWarranties = onSnapshot(q, (snapshot) => {
+        const items = [];
+        snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        setWarranties(items);
+      }, () => {});
+    }
+
     return () => {
       unsubProducts();
       unsubCustomers();
       unsubOrders();
       unsubTiers();
+      unsubWarranties();
     };
   }, [isFirebase, currentUser?.id, isAdmin]);
 
@@ -736,7 +1040,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
           return c;
         });
-        localStorage.setItem("dp_sandbox_customers", JSON.stringify(next));
+        localStorage.setItem("dp_sandbox_customers_v2", JSON.stringify(next));
         return next;
       });
       // also update current user if it matches
@@ -782,6 +1086,26 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const clearCart = () => setCart([]);
+
+  const replaceCart = (items: OrderItem[]) => {
+    const newCart = items.map((item) => {
+      const foundProd = products.find((p) => p.id === item.productId || p.sku === item.sku) || {
+        id: item.productId,
+        name: item.productName,
+        sku: item.sku,
+        description: '',
+        imageUrl: '',
+        baseWholesalePrice: item.originalPrice,
+        isRestricted: false,
+      };
+      return {
+        product: foundProd as Product,
+        qty: item.qty,
+        selectedColors: item.selectedColors,
+      };
+    });
+    setCart(newCart);
+  };
 
   // Place Order (Submit Invoice and Packing Slip)
   const placeOrder = async (
@@ -873,9 +1197,27 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       };
     });
 
+    const totalWeightKg = cart.reduce((acc, item) => acc + ((item.product.weightKg || 0) * item.qty), 0);
+    const totalCubicMeters = cart.reduce((acc, item) => {
+      const l = (item.product.lengthCm || 0) / 100;
+      const w = (item.product.widthCm || 0) / 100;
+      const h = (item.product.heightCm || 0) / 100;
+      return acc + (l * w * h) * item.qty;
+    }, 0);
+
     const subtotal = Number(orderItems.reduce((acc, item) => acc + item.totalLineAmount, 0).toFixed(2));
-    const gstAmount = Number((subtotal * 0.10).toFixed(2)); // standard 10% GST in Australia
-    const totalAmount = Number((subtotal + gstAmount).toFixed(2));
+    
+    const freightInfo = freightEngine.calculateFreight({
+      subtotal,
+      totalWeightKg,
+      totalCubicMeters,
+      shippingBaseRate: companySettings.shippingBaseRate,
+      shippingPerKgRate: companySettings.shippingPerKgRate
+    });
+
+    const activeFreightCharge = ownTransport ? 0 : freightInfo.charge;
+    const gstAmount = Number(((subtotal + activeFreightCharge) * 0.10).toFixed(2)); // standard 10% GST in Australia
+    const totalAmount = Number((subtotal + activeFreightCharge + gstAmount).toFixed(2));
 
     const nextInvoiceNumber = `${documentMode === "QUOTE" ? "QTE" : "INV"}-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -899,6 +1241,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       totalAmount,
       status: initialStatus,
       createdAt: new Date().toISOString(),
+      shippingCharge: activeFreightCharge,
       ...(notes ? { notes } : {}),
       ...(documentMode === "QUOTE" ? { quoteMessage: notes || "This quote excludes shipping until finalized by Desmo Products." } : {}),
       ...(ownTransport !== undefined ? { ownTransport } : {}),
@@ -918,7 +1261,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (initialStatus === "approved" && documentMode !== "QUOTE") {
       try {
-        const pdf = generateInvoicePDF(newOrder);
+        const pdf = generateInvoicePDF(newOrder, companySettings);
         const dataUri = pdf.output("datauristring");
         const pdfBase64 = dataUri.split(",")[1];
         fetch("/api/send-invoice-email", {
@@ -971,7 +1314,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } else {
       setOrders(prev => {
         const next = prev.map(o => o.id === orderId ? { ...o, ...updates } : o);
-        localStorage.setItem("dp_sandbox_orders", JSON.stringify(next));
+        localStorage.setItem("dp_sandbox_orders_v2", JSON.stringify(next));
         return next;
       });
     }
@@ -1203,7 +1546,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
     } else {
-      localStorage.setItem("dp_sandbox_products", JSON.stringify(products.filter(p => p.id !== productId)));
+      localStorage.setItem("dp_sandbox_products_v2", JSON.stringify(products.filter(p => p.id !== productId)));
     }
   };
 
@@ -1391,6 +1734,89 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+
+  const submitWarrantyClaim = async (warrantyData) => {
+    const newId = `war-${Math.random().toString(36).substr(2, 9)}`;
+    const fullWarranty = {
+      id: newId,
+      ...warrantyData,
+      status: "pending",
+      submissionDate: new Date().toISOString()
+    };
+    
+    if (isFirebase && isFirebaseAvailable) {
+      await setDoc(doc(db, "warranties", newId), fullWarranty);
+    } else {
+      setWarranties(prev => [...prev, fullWarranty]);
+    }
+  };
+
+  const updateWarrantyStatus = async (warrantyId, status, adminNotes) => {
+    if (!isAdmin) return;
+    if (isFirebase && isFirebaseAvailable) {
+      const updateData = { status };
+      if (adminNotes !== undefined) updateData.adminNotes = adminNotes;
+      await updateDoc(doc(db, "warranties", warrantyId), updateData);
+    } else {
+      setWarranties(prev => prev.map(w => w.id === warrantyId ? { ...w, status, adminNotes: adminNotes ?? w.adminNotes } : w));
+    }
+  };
+
+  const getCustomer360 = (customerId) => {
+    const customerOrders = orders.filter(o => o.customerId === customerId && o.documentType !== "QUOTE");
+    
+    const lifetimeValue = customerOrders.filter(o => o.status === 'paid').reduce((sum, o) => sum + o.totalAmount, 0);
+    const totalOrders = customerOrders.length;
+    const averageOrderValue = totalOrders > 0 ? lifetimeValue / totalOrders : 0;
+    
+    // Purchase history map
+    const productMap = {};
+    customerOrders.forEach(order => {
+      order.items.forEach(item => {
+        if (!productMap[item.productId]) {
+          productMap[item.productId] = { productId: item.productId, qty: 0, lastPurchased: order.createdAt };
+        }
+        productMap[item.productId].qty += item.qty;
+        if (order.createdAt > productMap[item.productId].lastPurchased) {
+          productMap[item.productId].lastPurchased = order.createdAt;
+        }
+      });
+    });
+    
+    const purchaseHistory = Object.values(productMap);
+    
+    // Mock analytics and tickets
+    return {
+      customerId,
+      lifetimeValue,
+      totalOrders,
+      averageOrderValue,
+      purchaseHistory,
+      behaviorAnalytics: {
+        lastLogin: new Date().toISOString(),
+        frequentlyViewedCategories: ["Digital Meters", "Safety Compliance"],
+        cartAbandonmentRate: 15.5
+      },
+      satisfactionScore: 88,
+      supportTickets: [
+        { id: "TKT-001", subject: "Shipping delay query", status: "Closed", date: new Date(Date.now() - 86400000 * 10).toISOString() }
+      ],
+      paymentBehavior: {
+        averageDaysToPay: 14,
+        latePaymentsCount: 0
+      },
+      productPreferences: purchaseHistory.map(p => p.productId).slice(0, 3),
+      idealNextOrderPrediction: [
+        { productId: "DP-DMM-401", probability: 0.85 }
+      ],
+      riskScore: 12,
+      engagementMetrics: {
+        emailOpenRate: 65,
+        portalSessionsPerMonth: 8
+      }
+    };
+  };
+
   // ── Pricing Tier CRUD ────────────────────────────────────────────────────
   const createPricingTier = async (tier: Omit<PricingTier, "id">) => {
     if (!isAdmin) return;
@@ -1460,9 +1886,9 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const resetDemoData = () => {
-    localStorage.removeItem("dp_sandbox_products");
-    localStorage.removeItem("dp_sandbox_customers");
-    localStorage.removeItem("dp_sandbox_orders");
+    localStorage.removeItem("dp_sandbox_products_v2");
+    localStorage.removeItem("dp_sandbox_customers_v2");
+    localStorage.removeItem("dp_sandbox_orders_v2");
     localStorage.removeItem("dp_sandbox_user");
     setProducts(DEFAULT_PRODUCTS);
     setCustomers(DEFAULT_CUSTOMERS);
@@ -1476,6 +1902,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       value={{
         isFirebase,
         isFirebaseConfigured: isFirebaseAvailable,
+        isOnline,
         currentUser,
         isAdmin,
         products,
@@ -1488,6 +1915,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         removeFromCart,
         updateCartQty,
         clearCart,
+        replaceCart,
         placeOrder,
         editOrder,
         approveCustomer,
@@ -1509,7 +1937,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteOrder,
         addShippingCharge,
         companySettings,
-        updateCompanySettings,
+        warranties, submitWarrantyClaim, updateWarrantyStatus, getCustomer360, updateCompanySettings,
         pricingTiers,
         createPricingTier,
         updatePricingTier,
