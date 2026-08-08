@@ -8,13 +8,13 @@ interface ProductPlaceholderImageProps {
 }
 
 export const ProductPlaceholderImage: React.FC<ProductPlaceholderImageProps> = ({
-  sku,
-  name,
+  sku = "",
+  name = "Unknown Product",
   category = "Electrical Instrument",
   className = "w-full h-full",
 }) => {
   // Generate some deterministic design paths/values based on SKU
-  const hash = sku.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const hash = (sku || "").split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
   
   // Decide waveform style based on SKU
   const isSine = hash % 2 === 0;

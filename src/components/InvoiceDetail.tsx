@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import { usePortal } from "../context/PortalContext";
 import { Order } from "../types";
-import { ArrowLeft, Printer, ShieldCheck, CreditCard, ChevronRight, Truck, FileDown, Mail, Loader2, Check, X, Clock, FileText } from "lucide-react";
+import { ArrowLeft, Printer, ShieldCheck, CreditCard, ChevronRight, Truck, FileDown, Mail, Loader2, Check, X, Clock, FileText, ShoppingBag } from "lucide-react";
 import { generateInvoicePDF } from "../utils/pdfGenerator";
+import { useToast } from "./ui/ToastContext";
 
 interface InvoiceDetailProps {
   orderId: string;
@@ -11,13 +12,50 @@ interface InvoiceDetailProps {
 }
 
 export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, onViewPackingSlip }) => {
-  const { orders, isAdmin, updateOrderStatus, approveOrder, declineOrder, companySettings } = usePortal();
+  const { orders, isAdmin, updateOrderStatus, approveOrder, declineOrder, companySettings, products, addToCart, requestShippingReview } = usePortal();
+  const { showToast } = useToast();
   const [isEmailing, setIsEmailing] = React.useState(false);
   const [emailStatus, setEmailStatus] = React.useState<"idle" | "success" | "error">("idle");
   const [emailError, setEmailError] = React.useState<string | null>(null);
+  const [reordered, setReordered] = useState(false);
+
+  // Freight Review Modal State
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewNotes, setReviewNotes] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  const handleReviewSubmit = async () => {
+    if (!order) return;
+    setIsSubmittingReview(true);
+    try {
+      await requestShippingReview(order.id, reviewNotes);
+      showToast("Review Requested", "Your request for shipping review has been sent to Desmo.", "success");
+      setShowReviewModal(false);
+    } catch (err) {
+      showToast("Error", "Failed to submit review request.", "error");
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   const order = orders.find(o => o.id === orderId);
   const isQuote = order?.documentType === "QUOTE";
+
+  const isInvoiceOverdue = React.useMemo(() => {
+    if (!order || isQuote || order.status === "paid" || order.status === "cancelled" || order.status === "declined") return false;
+    const sentDate = order.approvedAt || order.createdAt;
+    if (!sentDate) return false;
+    const daysSince = Math.floor((Date.now() - new Date(sentDate).getTime()) / (1000 * 60 * 60 * 24));
+    return daysSince > 30;
+  }, [order, isQuote]);
+
+  const isQuoteExpired = React.useMemo(() => {
+    if (!order || !isQuote || order.status === "approved" || order.status === "paid" || order.status === "cancelled" || order.status === "declined") return false;
+    const requestDate = order.createdAt;
+    if (!requestDate) return false;
+    const daysSince = Math.floor((Date.now() - new Date(requestDate).getTime()) / (1000 * 60 * 60 * 24));
+    return daysSince > 30;
+  }, [order, isQuote]);
 
   if (!order) {
     return (
@@ -39,8 +77,33 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
     pdf.save(`${isQuote ? "quote" : "invoice"}_${order.id}.pdf`);
   };
 
-  const handleApproveQuote = () => {
-    approveOrder(order.id);
+  const handleReorder = () => {
+    if (!order || !order.items) return;
+    let added = 0;
+    order.items.forEach(item => {
+      const found = products.find(p => p.id === item.productId || p.sku.toUpperCase() === item.sku.toUpperCase());
+      if (found) {
+        addToCart(found, item.qty);
+        added++;
+      }
+    });
+    setReordered(true);
+    showToast("Reorder Successful", `Added ${added} items from ${order.id} to your active cart.`, "success");
+    setTimeout(() => setReordered(false), 3000);
+  };
+
+  const handleApproveQuote = async () => {
+    const newId = await approveOrder(order.id);
+    if (newId && newId !== order.id) {
+      onBack();
+    }
+    showToast("Purchase Order Created", `Quote converted to active Tax Invoice / Purchase Order.`, "success");
+  };
+
+  const handleMarkAsPaid = () => {
+    if (!order) return;
+    updateOrderStatus(order.id, "paid");
+    showToast("Payment Recorded", `Invoice ${order.id} marked as paid.`, "success");
   };
 
   const handleEmailInvoice = async () => {
@@ -87,9 +150,9 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
 
   const getStatusColor = (status: Order["status"]) => {
     switch (status) {
-      case "quote_requested": return "bg-amber-50 text-amber-700 border border-amber-200 rounded-full";
+      case "quote_requested": return "bg-amber-50 text-slate-700 border border-amber-200 rounded-full";
       case "quote_finalized": return "bg-blue-50 text-blue-700 border border-blue-200 rounded-full";
-      case "pending_approval": return "bg-amber-50 text-amber-700 border border-amber-200 rounded-full animate-pulse";
+      case "pending_approval": return "bg-amber-50 text-slate-700 border border-amber-200 rounded-full ";
       case "approved": return "bg-indigo-50 text-indigo-705 border border-indigo-200 rounded-full";
       case "declined": return "bg-red-50 text-red-655 border border-red-200 rounded-full";
       case "paid": return "bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full";
@@ -154,6 +217,17 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
             </button>
           )}
 
+          {isAdmin && !isQuote && order.status !== "paid" && order.status !== "cancelled" && order.status !== "declined" && (
+            <button
+              id="mark_paid_btn"
+              onClick={handleMarkAsPaid}
+              className="border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1.5 font-mono"
+            >
+              <CreditCard className="w-4 h-4 text-slate-600" />
+              Mark as Paid
+            </button>
+          )}
+
           <button
             id="download_invoice_pdf_btn"
             onClick={handleDownloadPDF}
@@ -161,6 +235,15 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
           >
             <FileDown className="w-4 h-4 text-blue-600" />
             Download PDF
+          </button>
+
+          <button
+            id="reorder_items_btn"
+            onClick={handleReorder}
+            className="border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1.5 font-mono"
+          >
+            {reordered ? <Check className="w-4 h-4 text-slate-600" /> : <ShoppingBag className="w-4 h-4 text-blue-600" />}
+            {reordered ? "Items Added!" : "Reorder Items"}
           </button>
           
           <button
@@ -177,18 +260,18 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
       {/* Email Status Feedback banner */}
       {emailStatus === "success" && (
         <div className="bg-emerald-50 border border-emerald-250 p-4 rounded-xl flex items-center gap-3 text-emerald-800 text-xs font-medium uppercase font-mono shadow-sm">
-          <Check className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+          <Check className="w-5 h-5 text-slate-600 flex-shrink-0" />
           <span>{isQuote ? "Quote PDF" : "Invoice PDF"} has been successfully emailed to <strong>{order.customerEmail}</strong>!</span>
         </div>
       )}
 
       {emailStatus === "error" && (
-        <div className="bg-red-50/50 border border-red-200 p-4 rounded-xl flex flex-col gap-2 text-red-800 text-xs font-mono shadow-sm">
+        <div className="bg-red-50/50 border border-red-200 p-4 rounded-xl flex flex-col gap-2 text-slate-800 text-xs font-mono shadow-sm">
           <div className="flex items-center gap-3 font-medium uppercase">
-            <X className="w-5 h-5 text-red-600 flex-shrink-0" />
+            <X className="w-5 h-5 text-slate-600 flex-shrink-0" />
               <span>Failed to auto-email: {emailError}</span>
           </div>
-          <span className="text-[10px] text-red-600/80 pl-8 normal-case font-sans">
+          <span className="text-[10px] text-slate-600/80 pl-8 normal-case font-sans">
             Fallback activated: The document has been downloaded automatically. You can attach it manually to your email client. Add <strong>GMAIL_USER</strong> and <strong>GMAIL_APP_PASSWORD</strong> environment variables in your server to enable automated emailing.
           </span>
         </div>
@@ -197,7 +280,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
       {/* Order Confirmation Banner */}
       {isQuote && order.status === "quote_requested" && (
       <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3 shadow-sm mb-6" id="invoice_pending_banner">
-        <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <Clock className="w-5 h-5 text-slate-600 flex-shrink-0 mt-0.5" />
         <div>
           <h4 className="text-sm font-bold text-slate-900 tracking-tight">Quote Request Submitted - Awaiting Shipping Calculation</h4>
           <p className="text-xs text-slate-700 leading-relaxed font-medium mt-1">
@@ -206,13 +289,25 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
         </div>
       </div>)}
 
-      {isQuote && order.status === "quote_finalized" && (
+      {isQuote && order.status === "quote_finalized" && !isQuoteExpired && (
         <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3 shadow-sm mb-6" id="invoice_pending_banner">
           <Truck className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
           <div>
             <h4 className="text-sm font-bold text-slate-900 tracking-tight">Quote Finalized With Shipping</h4>
             <p className="text-xs text-slate-700 leading-relaxed font-medium mt-1">
-              Shipping has been added and the quote is ready for approval.
+              Shipping has been added and the quote is ready for approval. Valid for 30 days from request date.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isQuoteExpired && (
+        <div className="bg-slate-50 border-2 border-slate-300 p-4 rounded-xl flex items-start gap-3 shadow-sm mb-6" id="quote_expired_banner">
+          <Clock className="w-5 h-5 text-slate-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h4 className="text-sm font-bold text-slate-800 tracking-tight">QUOTE EXPIRED (30+ DAYS)</h4>
+            <p className="text-xs text-slate-700 leading-relaxed font-medium mt-1">
+              This quote was issued over 30 days ago and has expired. Prices and freight rates are subject to review. Please request an updated quote to proceed.
             </p>
           </div>
         </div>
@@ -222,17 +317,31 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
       <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3 shadow-sm mb-6" id="invoice_pending_banner">
         <Clock className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div>
-          <h4 className="text-sm font-bold text-slate-900 tracking-tight">Order Submitted Successfully & Awaiting Review</h4>
+          <h4 className="text-sm font-bold text-slate-900 tracking-tight">Order Pending Approval</h4>
           <p className="text-xs text-slate-700 leading-relaxed font-medium mt-1">
             {companySettings.orderPendingMessage}
           </p>
         </div>
       </div>)}
 
+      {isInvoiceOverdue && (
+        <div className="bg-slate-50 border-2 border-slate-300 p-4 rounded-xl flex items-start gap-3 shadow-sm mb-6 " id="invoice_overdue_banner">
+          <Clock className="w-5 h-5 text-slate-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h4 className="text-sm font-bold text-slate-700 tracking-tight">PAYMENT OVERDUE</h4>
+            <p className="text-xs text-slate-600 leading-relaxed font-medium mt-1">
+              This invoice has exceeded the 30-day payment terms and requires immediate attention.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Main Invoice Document */}
+      <div className={`bg-white border p-12 shadow-sm print:shadow-none print:border-none print:p-0 mx-auto rounded-xl ${isInvoiceOverdue ? 'border-slate-200' : 'border-slate-200'}`} style={{ maxWidth: '210mm' }} id="invoice_document_body">
       {order.status === "approved" && (
         <div className="bg-emerald-50 border border-emerald-250 p-6 rounded-xl space-y-2 text-slate-800 text-xs font-mono shadow-sm print:hidden">
           <div className="flex items-center gap-2.5 font-bold text-emerald-900 uppercase">
-            <Check className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+            <Check className="w-5 h-5 text-slate-600 flex-shrink-0" />
             <span>Order Confirmed & Approved</span>
           </div>
           <p className="text-[11px] leading-relaxed font-sans normal-case text-slate-650 pl-7 font-medium">
@@ -250,7 +359,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
             <p className="text-slate-500 font-mono text-xs font-semibold">
               REF: <span className="text-slate-800">{order.id}</span>
               {isQuote && (
-                <span className="ml-2 inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded-full text-[10px] font-bold uppercase">
+                <span className="ml-2 inline-flex items-center gap-1 bg-amber-50 text-slate-700 border border-amber-200 px-2 py-1 rounded-full text-[10px] font-bold uppercase">
                   <FileText className="w-3 h-3" />
                   Quote Document
                 </span>
@@ -318,7 +427,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
                     </td>
                     <td className="px-4 py-3.5 text-center font-bold">{item.qty}</td>
                     <td className="px-4 py-3.5 text-right">${item.originalPrice.toFixed(2)}</td>
-                    <td className="px-4 py-3.5 text-right font-bold text-emerald-600">
+                    <td className="px-4 py-3.5 text-right font-bold text-slate-600">
                       {item.appliedDiscountPercent > 0 ? `-${item.appliedDiscountPercent}%` : "—"}
                     </td>
                     <td className="px-4 py-3.5 text-right font-bold">${item.finalPricePerUnit.toFixed(2)}</td>
@@ -358,6 +467,12 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
                 <span className="text-slate-900 font-bold">${order.shippingCharge.toFixed(2)} AUD</span>
               </div>
             )}
+            {order.creditAdjustment !== undefined && order.creditAdjustment > 0 && (
+              <div className="flex justify-between text-emerald-700 font-bold">
+                <span>Freight Credit / Adjustment:</span>
+                <span>-${order.creditAdjustment.toFixed(2)} AUD</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span>GST (Tax 10%):</span>
               <span className="text-slate-900 font-bold">${order.gstAmount.toFixed(2)} AUD</span>
@@ -380,11 +495,12 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
         {/* Secure seal */}
         <div className="border-t border-slate-200 pt-6 flex justify-between items-center text-[10px] text-slate-400 font-mono uppercase tracking-widest font-semibold mt-4">
           <span className="flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <ShieldCheck className="w-3.5 h-3.5 text-slate-600" />
             AUTHENTICATED WHOLESALE DOCUMENT
           </span>
           <span>{companySettings.companyName || companySettings.tradingName}</span>
         </div>
+      </div>
       </div>
 
       {/* Admin Operations Block */}
@@ -406,7 +522,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
                 <button
                   id="admin_approve_order_btn"
                   onClick={() => approveOrder(order.id)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold uppercase text-xs tracking-wider border border-emerald-600 rounded-lg py-3 px-4 shadow-sm transition"
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-semibold uppercase text-xs tracking-wider border border-slate-600 rounded-lg py-3 px-4 shadow-sm transition"
                 >
                   Confirm & Approve Order
                 </button>
@@ -422,13 +538,31 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
 
             {isQuote && order.status === "quote_finalized" && !isAdmin && (
               <>
-                <button
-                  id="customer_approve_quote_btn"
-                  onClick={handleApproveQuote}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold uppercase text-xs tracking-wider border border-emerald-600 rounded-lg py-3 px-4 shadow-sm transition"
-                >
-                  Purchase / Order
-                </button>
+                {isQuoteExpired ? (
+                  <button
+                    disabled
+                    className="bg-slate-100 text-slate-400 font-semibold uppercase text-xs tracking-wider border border-slate-200 rounded-lg py-3 px-4 shadow-sm cursor-not-allowed"
+                  >
+                    Quote Expired (Re-quote Required)
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      id="customer_approve_quote_btn"
+                      onClick={handleApproveQuote}
+                      className="bg-slate-900 hover:bg-slate-800 text-white font-semibold uppercase text-xs tracking-wider border border-slate-600 rounded-lg py-3 px-4 shadow-sm transition"
+                    >
+                      Proceed to Purchase
+                    </button>
+                    <button
+                      id="customer_request_review_btn"
+                      onClick={() => setShowReviewModal(true)}
+                      className="bg-white hover:bg-slate-50 text-slate-700 font-semibold uppercase text-xs tracking-wider border border-slate-300 rounded-lg py-3 px-4 shadow-sm transition"
+                    >
+                      Request Shipping Review
+                    </button>
+                  </>
+                )}
                 <button
                   id="customer_decline_quote_btn"
                   onClick={() => declineOrder(order.id)}
@@ -443,7 +577,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
               <button
                 id="admin_mark_paid_btn"
                 onClick={() => updateOrderStatus(order.id, "paid")}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold uppercase text-xs tracking-wider border border-emerald-600 rounded-lg py-3 px-4 shadow-sm transition"
+                className="bg-slate-900 hover:bg-slate-800 text-white font-semibold uppercase text-xs tracking-wider border border-slate-600 rounded-lg py-3 px-4 shadow-sm transition"
               >
                 Mark as Paid (Deposit Settled)
               </button>
@@ -453,7 +587,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
               <button
                 id="admin_mark_shipped_btn"
                 onClick={() => updateOrderStatus(order.id, "shipped")}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold uppercase text-xs tracking-wider border border-blue-600 rounded-lg py-3 px-4 shadow-sm transition"
+                className="bg-slate-900 hover:bg-slate-800 text-white font-semibold uppercase text-xs tracking-wider border border-blue-600 rounded-lg py-3 px-4 shadow-sm transition"
               >
                 Dispatch Order (Mark as Shipped)
               </button>
@@ -468,6 +602,43 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
                 Cancel Invoice
               </button>
             )}
+          </div>
+        </div>
+      )}
+      {/* Shipping Review Modal */}
+      {showReviewModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowReviewModal(false)}>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-slate-900 uppercase font-mono tracking-wider">Request Freight Review</h3>
+            <p className="text-xs text-slate-600 font-medium leading-relaxed">
+              If you feel the estimated shipping cost is inaccurate or you require custom bulk freight handling, send a request to our admin team.
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Optional Notes / Reason:</label>
+              <textarea
+                value={reviewNotes}
+                onChange={e => setReviewNotes(e.target.value)}
+                placeholder="e.g., Requesting consolidated freight rate for pallet shipping..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 min-h-[70px]"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowReviewModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold uppercase rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleReviewSubmit}
+                disabled={isSubmittingReview}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase rounded-lg shadow-sm transition disabled:opacity-50"
+              >
+                {isSubmittingReview ? "Submitting..." : "Submit Review Request"}
+              </button>
+            </div>
           </div>
         </div>
       )}

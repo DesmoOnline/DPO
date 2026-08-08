@@ -78,6 +78,7 @@ export interface Product {
   lengthCm?: number;
   widthCm?: number;
   heightCm?: number;
+  estimatedShippingCost?: number; // Single item estimated freight cost
 }
 
 export interface CustomerProfile {
@@ -94,6 +95,7 @@ export interface CustomerProfile {
   rateBreakProfileId?: string; // ID of RateBreakProfile assigned to this customer
   weightBreakAssignments?: { [productId: string]: string[] }; // Map of productId -> array of WeightBreakTemplate IDs
   productRateBreakAlignments?: { [productId: string]: string }; // Map of productId -> productRateBreakId
+  storeCredit?: number; // Accumulated store credit balance for carryover
 }
 
 export interface OrderItem {
@@ -131,6 +133,9 @@ export interface Order {
   freightCompany?: string;
   consignmentNote?: string;
   packingStatus?: "Packed" | "Hold";
+  shippingReviewRequested?: boolean;
+  shippingReviewNotes?: string;
+  creditAdjustment?: number;
 }
 
 export interface CompanySettings {

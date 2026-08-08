@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { usePortal } from "../context/PortalContext";
 import { Product, CustomerProfile, Order, GSTReportData, QuantityBreak } from "../types";
 import { 
@@ -20,7 +20,9 @@ import {
   Truck,
   Pencil,
   Wifi,
-  WifiOff
+  WifiOff,
+  AlertTriangle,
+  PackageCheck
 } from "lucide-react";
 import RateBreakProfileManager from "./RateBreakProfileManager";
 import { Customer360View } from "./Customer360View";
@@ -46,6 +48,7 @@ export const AdminDashboard: React.FC = () => {
     addCategory,
     deleteCategory,
     addShippingCharge,
+    approveOrder,
     updateOrderDispatch,
     deleteOrder,
     companySettings,
@@ -53,6 +56,12 @@ export const AdminDashboard: React.FC = () => {
   } = usePortal();
 
   const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products" | "company" | "shipping" | "quotes" | "rateBreaks" | "warranties">("accounting");
+
+  useEffect(() => {
+    const handleOpenQuotes = () => setActiveSubTab("quotes");
+    window.addEventListener("open-admin-quotes", handleOpenQuotes);
+    return () => window.removeEventListener("open-admin-quotes", handleOpenQuotes);
+  }, []);
 
   // Company Settings State
   const [csForm, setCsForm] = useState({ ...companySettings });
@@ -81,6 +90,7 @@ export const AdminDashboard: React.FC = () => {
   const [newProdLengthCm, setNewProdLengthCm] = useState(20);
   const [newProdWidthCm, setNewProdWidthCm] = useState(15);
   const [newProdHeightCm, setNewProdHeightCm] = useState(10);
+  const [newProdEstShipping, setNewProdEstShipping] = useState(0);
   
   const [newProdQbQty, setNewProdQbQty] = useState(10);
   const [newProdQbValueType, setNewProdQbValueType] = useState<"percentage" | "fixed">("percentage");
@@ -158,7 +168,7 @@ export const AdminDashboard: React.FC = () => {
         return false;
       }
       
-      const orderDate = new Date(order.createdAt);
+      const orderDate = new Date(order.approvedAt || order.createdAt);
       if (dateRange === "30days") {
         const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         return orderDate >= thirtyDaysAgo;
@@ -514,7 +524,8 @@ export const AdminDashboard: React.FC = () => {
       weightKg: Number(newProdWeightKg),
       lengthCm: Number(newProdLengthCm),
       widthCm: Number(newProdWidthCm),
-      heightCm: Number(newProdHeightCm)
+      heightCm: Number(newProdHeightCm),
+      estimatedShippingCost: Number(newProdEstShipping)
     });
 
     setNewProdName("");
@@ -531,6 +542,7 @@ export const AdminDashboard: React.FC = () => {
     setNewProdLengthCm(20);
     setNewProdWidthCm(15);
     setNewProdHeightCm(10);
+    setNewProdEstShipping(0);
     setNewProdQtyBreaks([]);
     setNewProdAutoApprove(false);
   };
@@ -661,6 +673,53 @@ export const AdminDashboard: React.FC = () => {
           <Shield className="w-10 h-10 text-blue-600 hidden md:block" />
         </div>
       </div>
+
+      {/* Inventory Health & Backorders Alert Banner */}
+      {(() => {
+        const lowStockProducts = products.filter(p => (p.stock ?? 0) <= 15);
+        const backorderedOrders = orders.filter(o => o.status === "pending_approval" || o.status === "approved");
+        
+        if (lowStockProducts.length === 0 && backorderedOrders.length === 0) return null;
+
+        return (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-5 rounded-xl shadow-sm space-y-3 font-mono text-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-bold text-amber-900 uppercase">
+                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                <span>Inventory Health & Operations Alert</span>
+              </div>
+              <span className="bg-amber-200/80 text-amber-900 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
+                {lowStockProducts.length} Low Stock | {backorderedOrders.length} Open Orders
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1 font-sans">
+              <div className="bg-white/80 p-3 rounded-lg border border-amber-200/60 space-y-1">
+                <p className="text-[11px] font-bold text-amber-900 font-mono uppercase">Low Stock Warning (&le; 15 units)</p>
+                {lowStockProducts.length === 0 ? (
+                  <p className="text-xs text-slate-500">All products have adequate stock levels.</p>
+                ) : (
+                  <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                    {lowStockProducts.map(p => (
+                      <div key={p.id} className="flex justify-between items-center text-xs">
+                        <span className="font-semibold text-slate-800 truncate max-w-[200px]">{p.name} ({p.sku})</span>
+                        <span className="font-mono font-bold text-rose-600">{p.stock ?? 0} units left</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white/80 p-3 rounded-lg border border-amber-200/60 space-y-1">
+                <p className="text-[11px] font-bold text-amber-900 font-mono uppercase">Active Order Fulfillment Queue</p>
+                <p className="text-xs text-slate-650 font-medium">
+                  {backorderedOrders.length} open transactions currently awaiting payment confirmation or shipping dispatch.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Segment Selector tabs */}
       <div className="flex items-center gap-2 overflow-x-auto max-w-full py-1 border-b border-slate-100 pb-4" id="admin_tab_selector">
@@ -1682,6 +1741,18 @@ export const AdminDashboard: React.FC = () => {
                     className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-slate-800 focus:outline-none focus:border-blue-500 transition text-xs"
                   />
                 </div>
+                <div className="space-y-1">
+                  <label htmlFor="new_prod_est_shipping" className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Est. Shipping ($):</label>
+                  <input
+                    id="new_prod_est_shipping"
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={newProdEstShipping}
+                    onChange={(e) => setNewProdEstShipping(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-slate-800 focus:outline-none focus:border-blue-500 transition text-xs"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -1892,7 +1963,14 @@ export const AdminDashboard: React.FC = () => {
                             Edit
                           </button>
                         </div>
-                        <p className="text-[10px] text-slate-500 font-mono mt-0.5 font-medium">{p.sku}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-slate-500 font-mono font-medium">{p.sku}</span>
+                          {p.estimatedShippingCost !== undefined && p.estimatedShippingCost > 0 && (
+                            <span className="text-[9px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" title="Estimated single item freight cost">
+                              Freight: ${p.estimatedShippingCost.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       
                       {/* Inline Editable Category */}
@@ -2027,7 +2105,7 @@ export const AdminDashboard: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right font-mono font-bold">${order.subtotal.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 text-center flex items-center justify-center gap-2">
                         <button
                           onClick={() => {
                             setQuoteShippingOrderId(order.id);
@@ -2035,11 +2113,21 @@ export const AdminDashboard: React.FC = () => {
                             setQuoteShippingMethod(order.freightCompany || "Standard Freight");
                             setQuoteShippingNotes(order.consignmentNote || "");
                           }}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold inline-flex items-center gap-1.5"
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5"
                         >
                           <Truck className="w-3.5 h-3.5" />
-                          Add Shipping
+                          {order.status === "quote_finalized" ? "Edit Shipping" : "Add Shipping"}
                         </button>
+                        {order.status === "quote_finalized" && (
+                          <button
+                            onClick={() => approveOrder(order.id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5"
+                            title="Convert quote to active Purchase Order / Invoice"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            Convert to PO
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

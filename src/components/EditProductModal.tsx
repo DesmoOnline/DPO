@@ -29,6 +29,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
     lengthCm: product.lengthCm,
     widthCm: product.widthCm,
     heightCm: product.heightCm,
+    estimatedShippingCost: product.estimatedShippingCost ?? 0,
   });
 
   const [editProdPreviewUrl, setEditProdPreviewUrl] = useState<string | null>(
@@ -40,6 +41,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
   const [editProdQbValue, setEditProdQbValue] = useState(5);
   const [editProdColorInput, setEditProdColorInput] = useState("");
   const [isSavingEditedProduct, setIsSavingEditedProduct] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Rate breaks logic
   const [selectedRateBreakIndex, setSelectedRateBreakIndex] = useState<number | null>(null);
@@ -152,6 +154,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
     if (!editProdForm.name.trim() || !editProdForm.sku.trim()) return;
 
     setIsSavingEditedProduct(true);
+    setSaveError(null);
     try {
       await updateProduct(product.id, {
         ...editProdForm,
@@ -160,6 +163,9 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
         rateBreaks: editProdForm.rateBreaks && editProdForm.rateBreaks.length > 0 ? [...editProdForm.rateBreaks] : [],
       });
       onClose();
+    } catch (err: any) {
+      console.error(err);
+      setSaveError(err.message || "Failed to update product.");
     } finally {
       setIsSavingEditedProduct(false);
     }
@@ -216,7 +222,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Weight (kg)</label>
                   <input type="number" min="0" step="0.1" value={editProdForm.weightKg ?? 0} onChange={(e) => setEditProdForm(prev => ({ ...prev, weightKg: Math.max(0, parseFloat(e.target.value) || 0) }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500" />
@@ -232,6 +238,10 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Height (cm)</label>
                   <input type="number" min="0" step="0.1" value={editProdForm.heightCm ?? 0} onChange={(e) => setEditProdForm(prev => ({ ...prev, heightCm: Math.max(0, parseFloat(e.target.value) || 0) }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Est. Shipping ($)</label>
+                  <input type="number" min="0" step="0.5" value={editProdForm.estimatedShippingCost ?? 0} onChange={(e) => setEditProdForm(prev => ({ ...prev, estimatedShippingCost: Math.max(0, parseFloat(e.target.value) || 0) }))} className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-blue-500" />
                 </div>
               </div>
 
@@ -513,6 +523,12 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
               </div>
             )}
           </div>
+
+          {saveError && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs font-semibold border border-red-200">
+              {saveError}
+            </div>
+          )}
 
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-200">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold uppercase tracking-wider">

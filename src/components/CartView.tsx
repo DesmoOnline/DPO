@@ -200,7 +200,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
 
   // Build the onBehalfOf parameter for admin orders
   const getOnBehalfOf = () => {
-    if (!isActualAdmin || orderForMode === "self") return undefined;
+    if (!isAdmin || orderForMode === "self") return undefined;
 
     if (orderForMode === "registered" && selectedCustomerId) {
       const cust = customers.find(c => c.id === selectedCustomerId);
@@ -225,10 +225,10 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
   };
 
   const canSubmit = () => {
-    if (!isActualAdmin && !ownTransport && !selectedDeliveryAddress && !newDeliveryAddress) return false;
-    if (isActualAdmin && orderForMode === "registered" && !ownTransport && !selectedDeliveryAddress && !newDeliveryAddress) return false;
+    if (!isAdmin && !ownTransport && !selectedDeliveryAddress && !newDeliveryAddress) return false;
+    if (isAdmin && orderForMode === "registered" && !ownTransport && !selectedDeliveryAddress && !newDeliveryAddress) return false;
     
-    if (!isActualAdmin) return true;
+    if (!isAdmin) return true;
     if (orderForMode === "self") return true;
     if (orderForMode === "registered") return !!selectedCustomerId;
     if (orderForMode === "manual") return !!(manualEmail.trim() && manualCompany.trim());
@@ -245,7 +245,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
       if (isAddingAddress && newDeliveryAddress.trim()) {
         finalAddress = newDeliveryAddress.trim();
         // optionally save it to profile
-        const targetId = isActualAdmin && orderForMode === "registered" ? selectedCustomerId : currentUser?.id;
+        const targetId = isAdmin && orderForMode === "registered" ? selectedCustomerId : currentUser?.id;
         if (targetId) {
           // Fire and forget add address
           usePortal().addDeliveryAddress(targetId, finalAddress).catch(console.error);
@@ -499,7 +499,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
         {/* Right 1 Column: Summary */}
         <div className="space-y-4">
           {/* Admin: Order For selector */}
-          {isActualAdmin && (
+          {isAdmin && (
             <div className="bg-white border border-blue-200 p-5 space-y-4 shadow-sm rounded-xl" id="admin_order_for_panel">
               <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
                 <Users className="w-4 h-4 text-blue-600" />
@@ -658,7 +658,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
               ) : (
                 <>
                   <FileText className="w-4 h-4" />
-                  {isActualAdmin && orderForMode !== "self"
+                  {isAdmin && orderForMode !== "self"
                     ? "Submit On Behalf Of"
                     : documentMode === "QUOTE"
                       ? "Submit Quote Request"

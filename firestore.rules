@@ -22,6 +22,7 @@ service cloud.firestore {
          request.auth.token.email == "1@1.com" ||
          request.auth.uid == "rysSGhbaj8O7CIuZp0KiQsDUF" ||
          request.auth.uid == "FNmQiIOF1tccb2D1z7qfz2Vybgn2" ||
+         request.auth.uid == "G4lb5NRQlkefBFoLb97shFJYuGe2" ||
          exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
     }
 

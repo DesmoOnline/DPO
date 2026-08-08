@@ -80,6 +80,15 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="text-slate-600 dark:text-slate-400">
             Official B2B Wholesale Portal
           </span>
+          {currentUser && !isAdmin && (
+            <>
+              <span className="text-slate-300 dark:text-slate-700">|</span>
+              <span className="inline-flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono">
+                <Shield className="w-3 h-3 text-emerald-600" />
+                Approved Account • Net 30 Terms
+              </span>
+            </>
+          )}
         </div>
 
         {onOpenQuickOrder && currentUser && (
@@ -290,6 +299,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => {
                 if (isAdmin) {
                   setActiveTab("admin");
+                  setTimeout(() => window.dispatchEvent(new CustomEvent("open-admin-quotes")), 10);
                 } else {
                   setActiveTab("orders");
                 }

@@ -19,6 +19,13 @@ app.use(express.static(join(__dirname, 'dist')));
 app.post('/api/send-invoice-email', async (req, res) => {
   const { to, subject, body, pdfBase64, filename } = req.body;
   
+  if (!to || !subject || !body) {
+    return res.status(400).json({
+      success: false,
+      error: "Missing required fields: 'to', 'subject', or 'body'."
+    });
+  }
+
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
   
@@ -60,6 +67,12 @@ app.post('/api/send-invoice-email', async (req, res) => {
 // Catch-all route to serve the React app for client-side routing
 app.get('*', (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error("Unhandled server error:", err);
+  res.status(500).json({ success: false, error: "Internal server error" });
 });
 
 app.listen(port, '0.0.0.0', () => {

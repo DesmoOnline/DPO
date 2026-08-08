@@ -101,10 +101,11 @@ interface PortalContextType {
   deleteCategory: (category: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: Order["status"]) => Promise<void>;
   updateOrderDispatch: (orderId: string, dispatch: { freightCompany: string; consignmentNote: string; packingStatus: "Packed" | "Hold" }) => Promise<void>;
-  approveOrder: (orderId: string) => Promise<void>;
+  approveOrder: (orderId: string) => Promise<string | void>;
   declineOrder: (orderId: string) => Promise<void>;
   deleteOrder: (orderId: string) => Promise<void>;
-  addShippingCharge: (orderId: string, shippingCharge: number) => Promise<void>;
+  addShippingCharge: (orderId: string, shippingCharge: number, creditAdjustment?: number) => Promise<void>;
+  requestShippingReview: (orderId: string, notes?: string) => Promise<void>;
   
   // Settings
   companySettings: CompanySettings;
@@ -1215,16 +1216,17 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       shippingPerKgRate: companySettings.shippingPerKgRate
     });
 
-    const activeFreightCharge = ownTransport ? 0 : freightInfo.charge;
+    const estimatedShippingTotal = cart.reduce((acc, item) => acc + ((item.product.estimatedShippingCost || 0) * item.qty), 0);
+    const activeFreightCharge = ownTransport ? 0 : (estimatedShippingTotal > 0 ? estimatedShippingTotal : freightInfo.charge);
     const gstAmount = Number(((subtotal + activeFreightCharge) * 0.10).toFixed(2)); // standard 10% GST in Australia
     const totalAmount = Number((subtotal + activeFreightCharge + gstAmount).toFixed(2));
 
-    const nextInvoiceNumber = `${documentMode === "QUOTE" ? "QTE" : "INV"}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const nextInvoiceNumber = `${documentMode === "QUOTE" ? "QTE" : "INV"}-${Date.now().toString().slice(-5)}${Math.floor(10 + Math.random() * 90)}`;
 
     const allAutoApproved = cart.every(item => item.product.autoApprove === true);
     let initialStatus: Order["status"] = allAutoApproved ? "approved" : "pending_approval";
     if (documentMode === "QUOTE") {
-      initialStatus = "quote_requested";
+      initialStatus = activeFreightCharge > 0 ? "quote_finalized" : "quote_requested";
     } else if (!ownTransport) {
       initialStatus = "pending_approval";
     }
@@ -1243,7 +1245,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       createdAt: new Date().toISOString(),
       shippingCharge: activeFreightCharge,
       ...(notes ? { notes } : {}),
-      ...(documentMode === "QUOTE" ? { quoteMessage: notes || "This quote excludes shipping until finalized by Desmo Products." } : {}),
+      ...(documentMode === "QUOTE" ? { quoteMessage: activeFreightCharge > 0 ? "Quote includes estimated freight cost." : "This quote excludes shipping until finalized by Desmo Products." } : {}),
       ...(ownTransport !== undefined ? { ownTransport } : {}),
       ...(deliveryAddress ? { deliveryAddress } : {})
     };
@@ -1251,12 +1253,34 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (isFirebase && isFirebaseAvailable) {
       try {
         await setDoc(doc(db, "orders", nextInvoiceNumber), newOrder);
+        
+        // Deduct stock if auto-approved
+        if (initialStatus === "approved" && documentMode !== "QUOTE") {
+          for (const item of orderItems) {
+            const productRef = doc(db, "products", item.productId);
+            const productSnap = await getDoc(productRef);
+            if (productSnap.exists()) {
+              const currentStock = productSnap.data().stock || 0;
+              await updateDoc(productRef, { stock: Math.max(0, currentStock - item.qty) });
+            }
+          }
+        }
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, `orders/${nextInvoiceNumber}`);
       }
     } else {
       // Sandbox mode
       setOrders(prev => [newOrder, ...prev]);
+      if (initialStatus === "approved" && documentMode !== "QUOTE") {
+        setProducts(prevProducts => prevProducts.map(p => {
+          const orderItem = orderItems.find(item => item.productId === p.id);
+          if (orderItem) {
+            const currentStock = p.stock || 0;
+            return { ...p, stock: Math.max(0, currentStock - orderItem.qty) };
+          }
+          return p;
+        }));
+      }
     }
 
     if (initialStatus === "approved" && documentMode !== "QUOTE") {
@@ -1290,10 +1314,13 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const editOrder = async (orderId: string, updatedItems: OrderItem[], newDeliveryAddress?: string) => {
     if (!isAdmin && isFirebase) return;
     
+    const existingOrder = orders.find(o => o.id === orderId);
+    const shippingCharge = existingOrder?.shippingCharge || 0;
+    
     // Recalculate totals
     const subtotal = Number(updatedItems.reduce((acc, item) => acc + item.totalLineAmount, 0).toFixed(2));
-    const gstAmount = Number((subtotal * 0.10).toFixed(2));
-    const totalAmount = Number((subtotal + gstAmount).toFixed(2));
+    const gstAmount = Number(((subtotal + shippingCharge) * 0.10).toFixed(2));
+    const totalAmount = Number((subtotal + shippingCharge + gstAmount).toFixed(2));
 
     const updates: Partial<Order> = {
       items: updatedItems,
@@ -1616,13 +1643,28 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!canApprove && isFirebase) return;
 
     const updates: Partial<Order> = { status: "approved", approvedAt: new Date().toISOString() };
-    if (orderToApprove.documentType === "QUOTE") {
+    const isConvertingQuote = orderToApprove.documentType === "QUOTE";
+    let finalOrderId = orderId;
+
+    if (isConvertingQuote) {
       updates.quoteMessage = undefined;
+      updates.documentType = "INVOICE";
+      if (orderId.startsWith("QTE-")) {
+        finalOrderId = orderId.replace("QTE-", "INV-");
+        updates.id = finalOrderId;
+      }
     }
 
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await updateDoc(doc(db, "orders", orderId), updates);
+        if (finalOrderId !== orderId) {
+          // Create new document with INV id and delete old QTE document
+          const newOrderData = { ...orderToApprove, ...updates, id: finalOrderId };
+          await setDoc(doc(db, "orders", finalOrderId), newOrderData);
+          await deleteDoc(doc(db, "orders", orderId));
+        } else {
+          await updateDoc(doc(db, "orders", orderId), updates);
+        }
         
         // Deduct stock for each item in the order
         for (const item of orderToApprove.items) {
@@ -1634,6 +1676,23 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             await updateDoc(productRef, { stock: newStock });
           }
         }
+
+        // Notify Admin via email if converted by a customer
+        if (isConvertingQuote && !isAdmin) {
+          fetch("/api/send-invoice-email", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              to: "lew@desmoproducts.com.au",
+              subject: `[Desmo Portal] Quote ${orderId} Converted to Purchase Order`,
+              body: `Hello Admin,\n\nCustomer "${orderToApprove.companyName}" (${orderToApprove.customerEmail}) has converted Quote ${orderId} to a Purchase Order (${finalOrderId}).\n\nOrder Total: $${orderToApprove.totalAmount.toFixed(2)} AUD\n\nPlease log in to the admin dashboard to review and process the order.\n\nBest regards,\nDesmo Products Portal System`
+            })
+          }).catch(err => console.warn("Failed to notify admin via email:", err));
+        }
+        
+        return finalOrderId;
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
       }
@@ -1647,6 +1706,21 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
         return p;
       }));
+
+      // Notify Admin via email if converted by a customer (sandbox mode)
+      if (isConvertingQuote && !isAdmin) {
+        fetch("/api/send-invoice-email", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            to: "lew@desmoproducts.com.au",
+            subject: `[Desmo Portal] Quote ${orderId} Converted to Purchase Order (Sandbox)`,
+            body: `Hello Admin,\n\nCustomer "${orderToApprove.companyName}" (${orderToApprove.customerEmail}) has converted Quote ${orderId} to a Purchase Order (Sandbox).\n\nOrder Total: $${orderToApprove.totalAmount.toFixed(2)} AUD\n\nBest regards,\nDesmo Products Portal System`
+          })
+        }).catch(err => console.warn("Failed to notify admin via email:", err));
+      }
     }
   };
 
@@ -1690,22 +1764,43 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setOrders(prev => prev.filter(o => o.id !== orderId));
   };
 
-  const addShippingCharge = async (orderId: string, shippingCharge: number) => {
+  const addShippingCharge = async (orderId: string, shippingCharge: number, creditAdjustment?: number) => {
     if (!isActualAdmin) return;
 
     const orderToUpdate = orders.find(o => o.id === orderId);
     if (!orderToUpdate) return;
 
-    const newSubtotal = Number((orderToUpdate.items.reduce((acc, item) => acc + item.totalLineAmount, 0) + shippingCharge).toFixed(2));
-    const newGst = Number((newSubtotal * 0.10).toFixed(2));
-    const newTotal = Number((newSubtotal + newGst).toFixed(2));
+    const rawSubtotal = Number(orderToUpdate.items.reduce((acc, item) => acc + item.totalLineAmount, 0).toFixed(2));
+    const credit = creditAdjustment !== undefined ? creditAdjustment : (orderToUpdate.creditAdjustment || 0);
+    const newGst = Number(((rawSubtotal + shippingCharge - credit) * 0.10).toFixed(2));
+    const newTotal = Number((rawSubtotal + shippingCharge - credit + newGst).toFixed(2));
 
     const updates: Partial<Order> = {
       shippingCharge,
-      subtotal: newSubtotal,
+      creditAdjustment: credit,
       gstAmount: newGst,
       totalAmount: newTotal,
-      ...(orderToUpdate.documentType === "QUOTE" ? { status: "quote_finalized" as Order["status"] } : {})
+      status: orderToUpdate.documentType === "QUOTE" ? "quote_finalized" : orderToUpdate.status,
+      quoteMessage: undefined,
+      shippingReviewRequested: false
+    };
+
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await updateDoc(doc(db, "orders", orderId), updates);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
+      }
+    } else {
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
+    }
+  };
+
+  const requestShippingReview = async (orderId: string, notes?: string) => {
+    const updates: Partial<Order> = {
+      shippingReviewRequested: true,
+      shippingReviewNotes: notes || "",
+      status: "quote_requested"
     };
 
     if (isFirebase && isFirebaseAvailable) {
@@ -1754,7 +1849,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateWarrantyStatus = async (warrantyId, status, adminNotes) => {
     if (!isAdmin) return;
     if (isFirebase && isFirebaseAvailable) {
-      const updateData = { status };
+      const updateData: Record<string, any> = { status };
       if (adminNotes !== undefined) updateData.adminNotes = adminNotes;
       await updateDoc(doc(db, "warranties", warrantyId), updateData);
     } else {
@@ -1770,7 +1865,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const averageOrderValue = totalOrders > 0 ? lifetimeValue / totalOrders : 0;
     
     // Purchase history map
-    const productMap = {};
+    const productMap: Record<string, { productId: string, qty: number, lastPurchased: string }> = {};
     customerOrders.forEach(order => {
       order.items.forEach(item => {
         if (!productMap[item.productId]) {
@@ -1936,6 +2031,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         declineOrder,
         deleteOrder,
         addShippingCharge,
+        requestShippingReview,
         companySettings,
         warranties, submitWarrantyClaim, updateWarrantyStatus, getCustomer360, updateCompanySettings,
         pricingTiers,

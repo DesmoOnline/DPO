@@ -165,7 +165,7 @@ export const Customer360View: React.FC<Customer360ViewProps> = ({ customer }) =>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-24 h-2 bg-indigo-100 dark:bg-indigo-950 rounded-full overflow-hidden">
-                      <div className="h-full bg-indigo-500" style={{ width: \`\${pred.probability * 100}%\` }}></div>
+                      <div className="h-full bg-indigo-500" style={{ width: `${pred.probability * 100}%` }}></div>
                     </div>
                     <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">{Math.round(pred.probability * 100)}%</span>
                   </div>

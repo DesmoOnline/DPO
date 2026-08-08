@@ -172,10 +172,38 @@ export const QuickOrderModal: React.FC<QuickOrderModalProps> = ({
         ) : (
           <div className="space-y-4">
             <p className="text-xs text-slate-500">
-              Paste lines formatted as <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">SKU, QUANTITY</code> (one item per line).
+              Paste lines formatted as <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">SKU, QUANTITY</code> (one item per line), or upload a <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">.csv</code> file directly.
             </p>
+
+            <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 rounded-xl p-4 text-center cursor-pointer transition-colors bg-slate-50 dark:bg-slate-900">
+              <input
+                type="file"
+                accept=".csv,.txt"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      const text = event.target?.result as string;
+                      if (text) setCsvText(text);
+                    };
+                    reader.onerror = () => {
+                      showToast("File Error", "Could not read the uploaded CSV file.", "error");
+                    };
+                    reader.readAsText(file);
+                  }
+                }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              <Upload className="w-6 h-6 text-blue-600 dark:text-blue-400 mx-auto mb-1" />
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                Click to browse or drop a .csv file here
+              </p>
+              <p className="text-[10px] text-slate-400">Supports standard comma, tab, or semicolon separated files</p>
+            </div>
+
             <textarea
-              rows={6}
+              rows={5}
               placeholder="DES-1001, 10&#10;DES-1002, 50&#10;DES-1003, 5"
               value={csvText}
               onChange={(e) => setCsvText(e.target.value)}

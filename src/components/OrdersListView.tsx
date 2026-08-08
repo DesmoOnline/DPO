@@ -18,9 +18,12 @@ import {
   List,
   LayoutList,
   FileCheck,
-  ArrowUpDown
+  ArrowUpDown,
+  Trash2,
+  AlertTriangle
 } from "lucide-react";
 import { EditOrderModal } from "./EditOrderModal";
+import { useToast } from "./ui/ToastContext";
 
 interface OrdersListViewProps {
   onViewInvoice: (orderId: string) => void;
@@ -30,15 +33,18 @@ interface OrdersListViewProps {
 }
 
 export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, onViewPackingSlip, searchQuery, onSearchQueryChange }) => {
-  const { orders, isAdmin, currentUser, approveOrder, declineOrder, updateOrderStatus, updateOrderDispatch, addShippingCharge } = usePortal();
+  const { orders, isAdmin, currentUser, approveOrder, declineOrder, updateOrderStatus, updateOrderDispatch, addShippingCharge, deleteOrder, products, addToCart } = usePortal();
+  const { showToast } = useToast();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"standard" | "detailed" | "invoice_only" | "quote_only">("standard");
   const [sortBy, setSortBy] = useState<"date" | "amount" | "reference" | "customer" | "status">("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
 
   // Shipping charge modal state
   const [shippingModalOrderId, setShippingModalOrderId] = useState<string | null>(null);
   const [shippingAmount, setShippingAmount] = useState("");
+  const [creditAmount, setCreditAmount] = useState("");
   const [shippingSubmitting, setShippingSubmitting] = useState(false);
 
   // Edit order modal state
@@ -49,6 +55,24 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
   const [freightCompany, setFreightCompany] = useState("Team Global Express");
   const [consignmentNote, setConsignmentNote] = useState("");
   const [freightSubmitting, setFreightSubmitting] = useState(false);
+
+  // Delete confirmation modal state
+  const [deleteConfirmOrderId, setDeleteConfirmOrderId] = useState<string | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmOrderId) return;
+    setDeleteSubmitting(true);
+    try {
+      await deleteOrder(deleteConfirmOrderId);
+      showToast("Record Deleted", `Successfully removed ${deleteConfirmOrderId}.`, "success");
+      setDeleteConfirmOrderId(null);
+    } catch (err) {
+      showToast("Delete Failed", "Could not delete the record.", "error");
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
 
   const handleFreightSubmit = async () => {
     if (!freightModalOrderId) return;
@@ -64,6 +88,53 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
     setFreightModalOrderId(null);
     setConsignmentNote("");
     onViewPackingSlip(id);
+  };
+
+  const toggleSelectOrder = (id: string) => {
+    setSelectedOrderIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedOrderIds.length === filteredAndSortedOrders.length) {
+      setSelectedOrderIds([]);
+    } else {
+      setSelectedOrderIds(filteredAndSortedOrders.map(o => o.id));
+    }
+  };
+
+  const handleBatchApprove = async () => {
+    const results = await Promise.allSettled(selectedOrderIds.map(id => approveOrder(id)));
+    const failed = results.filter(r => r.status === "rejected").length;
+    if (failed > 0) showToast("Batch Error", `${failed} orders failed to approve.`, "error");
+    else showToast("Batch Success", "Selected orders approved.", "success");
+    setSelectedOrderIds([]);
+  };
+
+  const handleBatchMarkPaid = async () => {
+    const results = await Promise.allSettled(selectedOrderIds.map(id => updateOrderStatus(id, "paid")));
+    const failed = results.filter(r => r.status === "rejected").length;
+    if (failed > 0) showToast("Batch Error", `${failed} orders failed to update.`, "error");
+    else showToast("Batch Success", "Selected orders marked as Paid.", "success");
+    setSelectedOrderIds([]);
+  };
+
+  const handleBatchMarkShipped = async () => {
+    const results = await Promise.allSettled(selectedOrderIds.map(id => updateOrderStatus(id, "shipped")));
+    const failed = results.filter(r => r.status === "rejected").length;
+    if (failed > 0) showToast("Batch Error", `${failed} orders failed to update.`, "error");
+    else showToast("Batch Success", "Selected orders marked as Dispatched.", "success");
+    setSelectedOrderIds([]);
+  };
+
+  const handleReorderOrder = (orderId: string) => {
+    const target = orders.find(o => o.id === orderId);
+    if (!target || !target.items) return;
+    target.items.forEach(item => {
+      const found = products.find(p => p.id === item.productId || p.sku.toUpperCase() === item.sku.toUpperCase());
+      if (found) {
+        addToCart(found, item.qty);
+      }
+    });
   };
 
   const filteredAndSortedOrders = orders.filter(order => {
@@ -104,11 +175,32 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
     return sortOrder === "asc" ? comparison : -comparison;
   });
 
-  const getStatusBadge = (status: Order["status"]) => {
+  const getStatusBadge = (status: Order["status"], isOverdue?: boolean, isExpired?: boolean, isReviewRequested?: boolean) => {
+    if (isReviewRequested) {
+      return (
+        <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full">
+          Freight Review Requested
+        </span>
+      );
+    }
+    if (isOverdue) {
+      return (
+        <span className="bg-red-100 text-slate-700 border border-red-300 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full ">
+          Overdue (30+ Days)
+        </span>
+      );
+    }
+    if (isExpired) {
+      return (
+        <span className="bg-amber-100 text-slate-800 border border-amber-300 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full">
+          Quote Expired
+        </span>
+      );
+    }
     switch (status) {
       case "quote_requested":
         return (
-          <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full">
+          <span className="bg-amber-50 text-slate-700 border border-amber-200 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full">
             Quote Requested
           </span>
         );
@@ -120,7 +212,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
         );
       case "pending_approval":
         return (
-          <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full animate-pulse">
+          <span className="bg-amber-50 text-slate-700 border border-amber-200 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full ">
             Awaiting Approval
           </span>
         );
@@ -132,7 +224,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
         );
       case "declined":
         return (
-          <span className="bg-red-55/10 text-red-700 border border-red-200/50 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full">
+          <span className="bg-red-55/10 text-slate-700 border border-red-200/50 text-[10px] font-mono px-2.5 py-1 uppercase font-bold rounded-full">
             Declined
           </span>
         );
@@ -172,17 +264,34 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
   };
 
   const handleShippingSubmit = async () => {
-    if (!shippingModalOrderId || !shippingAmount) return;
-    const amount = parseFloat(shippingAmount);
-    if (isNaN(amount) || amount < 0) return;
+    if (!shippingModalOrderId) return;
+    const amount = parseFloat(shippingAmount) || 0;
+    const credit = parseFloat(creditAmount) || 0;
     setShippingSubmitting(true);
     try {
-      await addShippingCharge(shippingModalOrderId, amount);
+      await addShippingCharge(shippingModalOrderId, amount, credit);
       setShippingModalOrderId(null);
       setShippingAmount("");
+      setCreditAmount("");
     } finally {
       setShippingSubmitting(false);
     }
+  };
+
+  const isInvoiceOverdue = (order: Order) => {
+    if (order.documentType === "QUOTE" || order.status === "paid" || order.status === "cancelled" || order.status === "declined") return false;
+    const sentDate = order.approvedAt || order.createdAt;
+    if (!sentDate) return false;
+    const daysSince = Math.floor((Date.now() - new Date(sentDate).getTime()) / (1000 * 60 * 60 * 24));
+    return daysSince > 30;
+  };
+
+  const isQuoteExpired = (order: Order) => {
+    if (order.documentType !== "QUOTE" || order.status === "approved" || order.status === "paid" || order.status === "cancelled" || order.status === "declined") return false;
+    const requestDate = order.createdAt;
+    if (!requestDate) return false;
+    const daysSince = Math.floor((Date.now() - new Date(requestDate).getTime()) / (1000 * 60 * 60 * 24));
+    return daysSince > 30;
   };
 
   if (!currentUser) {
@@ -218,7 +327,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
               onClick={() => setViewMode("standard")}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold font-mono transition whitespace-nowrap ${
                 viewMode === "standard" 
-                  ? "bg-blue-600 text-white shadow-sm font-bold" 
+                  ? "bg-slate-700 text-white shadow-sm font-bold" 
                   : "bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100"
               }`}
             >
@@ -230,7 +339,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
               onClick={() => setViewMode("detailed")}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold font-mono transition whitespace-nowrap ${
                 viewMode === "detailed" 
-                  ? "bg-blue-600 text-white shadow-sm font-bold" 
+                  ? "bg-slate-700 text-white shadow-sm font-bold" 
                   : "bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100"
               }`}
             >
@@ -242,7 +351,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
               onClick={() => setViewMode("invoice_only")}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold font-mono transition whitespace-nowrap ${
                 viewMode === "invoice_only" 
-                  ? "bg-blue-600 text-white shadow-sm font-bold" 
+                  ? "bg-slate-700 text-white shadow-sm font-bold" 
                   : "bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100"
               }`}
             >
@@ -254,7 +363,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
               onClick={() => setViewMode("quote_only")}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold font-mono transition whitespace-nowrap ${
                 viewMode === "quote_only" 
-                  ? "bg-blue-600 text-white shadow-sm font-bold" 
+                  ? "bg-slate-700 text-white shadow-sm font-bold" 
                   : "bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100"
               }`}
             >
@@ -336,6 +445,44 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
         </div>
       </div>
 
+      {/* Batch Operations Bar for Admin */}
+      {isAdmin && selectedOrderIds.length > 0 && (
+        <div className="bg-slate-900 text-white p-4 rounded-xl flex flex-wrap items-center justify-between gap-4 font-mono text-xs shadow-lg animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <span className="bg-slate-700 text-white font-bold px-2.5 py-1 rounded-md text-[11px]">
+              {selectedOrderIds.length} Selected
+            </span>
+            <span className="text-slate-300">Batch Admin Actions:</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleBatchApprove}
+              className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] transition"
+            >
+              Batch Approve
+            </button>
+            <button
+              onClick={handleBatchMarkPaid}
+              className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] transition"
+            >
+              Mark Paid
+            </button>
+            <button
+              onClick={handleBatchMarkShipped}
+              className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] transition"
+            >
+              Mark Dispatched
+            </button>
+            <button
+              onClick={() => setSelectedOrderIds([])}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] transition"
+            >
+              Clear Selection
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Shipping Charge Modal */}
       {shippingModalOrderId && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShippingModalOrderId(null)}>
@@ -352,7 +499,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                   <>
                     <br />Company: <strong>{ord.companyName}</strong>
                     {ord.shippingCharge !== undefined && ord.shippingCharge > 0 && (
-                      <><br />Current Shipping: <strong className="text-amber-600">${ord.shippingCharge.toFixed(2)}</strong></>
+                      <><br />Current Shipping: <strong className="text-slate-600">${ord.shippingCharge.toFixed(2)}</strong></>
                     )}
                   </>
                 ) : null;
@@ -377,6 +524,24 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                 />
               </div>
             </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase font-mono tracking-wider block">
+                Freight Credit / Adjustment ($):
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">$</span>
+                <input
+                  id="credit_amount_input"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(e.target.value)}
+                  className="w-full pl-7 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition font-mono font-semibold"
+                />
+              </div>
+            </div>
             <div className="flex gap-3">
               <button
                 onClick={() => { setShippingModalOrderId(null); setShippingAmount(""); }}
@@ -388,7 +553,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                 id="shipping_charge_submit_btn"
                 onClick={handleShippingSubmit}
                 disabled={shippingSubmitting || !shippingAmount || parseFloat(shippingAmount) < 0}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
+                className="flex-1 bg-slate-900 hover:bg-slate-800 text-white py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
               >
                 {shippingSubmitting ? (
                   <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
@@ -414,14 +579,24 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
       ) : viewMode === "detailed" ? (
         /* DETAILED LIST VIEW (Expanded Cards) */
         <div className="space-y-4" id="orders_detailed_view">
-          {filteredAndSortedOrders.map((order) => (
-            <div key={order.id} id={`ledger_card_${order.id}`} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 font-mono text-xs hover:border-slate-300 transition">
+          {filteredAndSortedOrders.map((order) => {
+            const overdue = isInvoiceOverdue(order);
+            return (
+            <div key={order.id} id={`ledger_card_${order.id}`} className={`bg-white border-slate-200 hover:border-slate-300 border rounded-xl p-5 shadow-sm space-y-4 font-mono text-xs transition`}>
               {/* Card Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2.5 flex-wrap">
+                  {isAdmin && (
+                    <input
+                      type="checkbox"
+                      checked={selectedOrderIds.includes(order.id)}
+                      onChange={() => toggleSelectOrder(order.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  )}
                   <span className="text-base font-bold text-slate-900 font-mono">{order.id}</span>
                   {order.documentType === "QUOTE" ? (
-                    <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-bold uppercase">Quote</span>
+                    <span className="text-[9px] bg-amber-50 text-slate-700 border border-amber-200 px-2 py-0.5 rounded-full font-bold uppercase">Quote</span>
                   ) : (
                     <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-bold uppercase">Invoice</span>
                   )}
@@ -430,7 +605,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                   )}
                 </div>
                 <div className="flex items-center gap-3">
-                  {getStatusBadge(order.status)}
+                  {getStatusBadge(order.status, overdue, isQuoteExpired(order), order.shippingReviewRequested)}
                   <span className="text-slate-500 font-semibold text-[11px]">{formatDate(order.createdAt)}</span>
                 </div>
               </div>
@@ -515,13 +690,13 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                     <>
                       <button
                         onClick={() => approveOrder(order.id)}
-                        className="border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
+                        className="border border-emerald-200 bg-slate-50 hover:bg-slate-100 text-slate-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                       >
                         <CheckCircle className="w-3 h-3" /> Approve
                       </button>
                       <button
                         onClick={() => declineOrder(order.id)}
-                        className="border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
+                        className="border border-red-200 bg-red-50 hover:bg-red-100 text-slate-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                       >
                         <XCircle className="w-3 h-3" /> Decline
                       </button>
@@ -545,10 +720,21 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                       <Ban className="w-3 h-3" /> Cancel
                     </button>
                   )}
+
+                  {isAdmin && (
+                    <button
+                      onClick={() => setDeleteConfirmOrderId(order.id)}
+                      className="border border-red-200 bg-red-50 hover:bg-red-100 text-slate-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
+                      title="Delete Record"
+                    >
+                      <Trash2 className="w-3 h-3" /> Delete
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         /* STANDARD LIST VIEW (High-Density Table) */
@@ -567,12 +753,14 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {filteredAndSortedOrders.map((order) => (
-                  <tr key={order.id} id={`ledger_row_${order.id}`} className="hover:bg-slate-50/50 transition">
+                {filteredAndSortedOrders.map((order) => {
+                  const overdue = isInvoiceOverdue(order);
+                  return (
+                  <tr key={order.id} id={`ledger_row_${order.id}`} className={`hover:bg-slate-50/50 transition`}>
                     <td className="px-5 py-4 font-bold text-slate-900">
                       {order.id}
                       {order.documentType === "QUOTE" && (
-                        <span className="ml-2 text-[8px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-bold uppercase">Quote</span>
+                        <span className="ml-2 text-[8px] bg-amber-50 text-slate-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-bold uppercase">Quote</span>
                       )}
                       {(!order.documentType || order.documentType === "INVOICE") && (
                         <span className="ml-2 text-[8px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded-full font-bold uppercase">Invoice</span>
@@ -599,7 +787,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                       )}
                     </td>
                     <td className="px-5 py-4 text-center">
-                      {getStatusBadge(order.status)}
+                      {getStatusBadge(order.status, overdue, false, order.shippingReviewRequested)}
                     </td>
                     <td className="px-5 py-4 text-right">
                       <div className="inline-flex items-center gap-2">
@@ -638,7 +826,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                             <button
                               id={`approve_${order.id}`}
                               onClick={() => approveOrder(order.id)}
-                              className="border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
+                              className="border border-emerald-200 bg-slate-50 hover:bg-slate-100 text-slate-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                               title="Approve Order"
                             >
                               <CheckCircle className="w-3 h-3" />
@@ -651,7 +839,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                             <button
                               id={`decline_${order.id}`}
                               onClick={() => declineOrder(order.id)}
-                              className="border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
+                              className="border border-red-200 bg-red-50 hover:bg-red-100 text-slate-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                               title="Decline Order"
                             >
                               <XCircle className="w-3 h-3" />
@@ -690,18 +878,32 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                             <button
                               id={`shipping_${order.id}`}
                               onClick={() => { setShippingModalOrderId(order.id); setShippingAmount(order.shippingCharge?.toString() || ""); }}
-                              className="border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
+                              className="border border-amber-200 bg-amber-50 hover:bg-amber-100 text-slate-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                               title="Add Shipping Charge"
                             >
                               <Package className="w-3 h-3" />
                               Shipping
                             </button>
                           )}
+
+                          {/* Delete Record - Admin Only */}
+                          {isAdmin && (
+                            <button
+                              id={`delete_${order.id}`}
+                              onClick={() => setDeleteConfirmOrderId(order.id)}
+                              className="border border-red-200 bg-red-50 hover:bg-red-100 text-slate-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
+                              title="Delete Record"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     )}
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
           </div>
@@ -778,6 +980,58 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
           orderId={editModalOrderId}
           onClose={() => setEditModalOrderId(null)}
         />
+      )}
+
+      {/* Verification Delete Confirmation Modal */}
+      {deleteConfirmOrderId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in" onClick={() => setDeleteConfirmOrderId(null)}>
+          <div className="bg-white rounded-xl border border-red-200 shadow-2xl p-6 w-full max-w-md mx-4 space-y-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-4">
+              <div className="p-2 bg-red-100 rounded-full text-slate-600">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 font-mono uppercase tracking-wider">Confirm Permanent Deletion</h3>
+                <p className="text-[11px] text-slate-500 font-mono">This action cannot be reversed.</p>
+              </div>
+            </div>
+
+            {(() => {
+              const targetOrd = orders.find(o => o.id === deleteConfirmOrderId);
+              return targetOrd ? (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2 text-xs font-mono text-slate-700">
+                  <p><strong>Record Reference:</strong> <span className="text-slate-900 font-bold">{targetOrd.id}</span> ({targetOrd.documentType === "QUOTE" ? "Quote" : "Invoice"})</p>
+                  <p><strong>Customer / Dealer:</strong> {targetOrd.companyName}</p>
+                  <p><strong>Total Amount:</strong> ${targetOrd.totalAmount.toFixed(2)} AUD</p>
+                </div>
+              ) : null;
+            })()}
+
+            <p className="text-xs text-slate-600 font-medium leading-relaxed">
+              Are you sure you want to delete this document from the Master Wholesale Ledger? It will be permanently removed from all reports and database views.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmOrderId(null)}
+                disabled={deleteSubmitting}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold uppercase rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleteSubmitting}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase rounded-lg shadow-sm transition inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {deleteSubmitting ? "Deleting..." : "Permanently Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
