@@ -125,7 +125,7 @@ export const RateBreakProfileManager: React.FC<RateBreakProfileManagerProps> = (
         </h2>
         <button
           onClick={handleNew}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          className="bg-amber-400 hover:bg-amber-500 text-slate-900 px-4 py-2 rounded-lg flex items-center gap-2"
         >
           <Plus size={20} />
           New Profile
@@ -270,7 +270,7 @@ const RateBreakProfileForm: React.FC<RateBreakProfileFormProps> = ({
           </button>
           <button
             onClick={onSave}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2"
+            className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-slate-900 rounded-lg flex items-center gap-2"
           >
             <Save size={18} />
             {isEditing ? "Update" : "Create"} Profile

@@ -94,6 +94,8 @@ interface PortalContextType {
   createCustomerProfile: (email: string, password: string, companyName: string, deliveryAddress: string) => Promise<void>;
   deleteCustomerProfile: (customerId: string) => Promise<void>;
   updateCustomerPricing: (customerId: string, productId: string, price: number) => Promise<void>;
+  updateCustomerRole: (customerId: string, role: "customer" | "admin" | "staff") => Promise<void>;
+  updateCustomerAllowedProducts: (customerId: string, productIds: string[]) => Promise<void>;
   removeCustomerPricing: (customerId: string, productId: string) => Promise<void>;
   updateProductRateBreakAlignment: (customerId: string, productId: string, rateBreakId: string | null) => Promise<void>;
   toggleRestrictedProductAccess: (customerId: string, productId: string) => Promise<void>;
@@ -754,7 +756,9 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const adminEmails = ["lew@desmoproducts.com.au", "1@1.com"];
   const adminUids = ["rysSGhbaj8O7CIuZp0KiQsDUF", "FNmQiIOF1tccb2D1z7qfz2Vybgn2"];
-  const isActualAdmin = currentUser ? (adminEmails.includes(currentUser.email) || adminUids.includes(currentUser.id)) : false;
+  const isActualAdmin = currentUser 
+    ? (currentUser.role === "admin" || currentUser.role === "staff" || adminEmails.includes(currentUser.email) || adminUids.includes(currentUser.id)) 
+    : false;
   const isAdmin = isActualAdmin && adminViewMode === "admin";
 
   // Load from local storage or set initial defaults
@@ -1376,17 +1380,21 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const prefix = isQuote ? "QTE" : "INV";
     const nextId = `${prefix}-${Date.now().toString().slice(-5)}${Math.floor(10 + Math.random() * 90)}`;
 
+    const {
+      approvedAt,
+      paidAt,
+      shippedAt,
+      packingStatus,
+      consignmentNote,
+      freightCompany,
+      ...rest
+    } = src;
+
     const newOrder: Order = {
-      ...src,
+      ...rest,
       id: nextId,
       status: isQuote ? "quote_finalized" : "pending_approval",
-      createdAt: new Date().toISOString(),
-      approvedAt: undefined,
-      paidAt: undefined,
-      shippedAt: undefined,
-      packingStatus: undefined,
-      consignmentNote: undefined,
-      freightCompany: undefined
+      createdAt: new Date().toISOString()
     };
 
     if (isFirebase && isFirebaseAvailable) {
@@ -1421,6 +1429,19 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         status: "approved",
         approvedAt: new Date().toISOString()
       } : c));
+    }
+  };
+
+  const updateCustomerRole = async (customerId: string, role: "customer" | "admin" | "staff") => {
+    if (!isAdmin && isFirebase) return;
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await updateDoc(doc(db, "users", customerId), { role });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${customerId}`);
+      }
+    } else {
+      setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, role } : c));
     }
   };
 
@@ -1936,6 +1957,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (isFirebase && isFirebaseAvailable) {
       try {
         await setDoc(doc(db, "settings", "company"), settings);
+        setCompanySettings(settings);
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, `settings/company`);
       }
@@ -2131,6 +2153,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         editOrder,
         approveCustomer,
         rejectCustomer,
+        updateCustomerRole,
         createCustomerProfile,
         deleteCustomerProfile,
         updateCustomerPricing,

@@ -153,7 +153,7 @@ export const WeightBreakManager: React.FC<WeightBreakManagerProps> = ({ onClose 
         <button
           onClick={handleNew}
           disabled={templates.length >= 10}
-          className={`${templates.length >= 10 ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white px-4 py-2 rounded-lg flex items-center gap-2 transition`}
+          className={`${templates.length >= 10 ? 'bg-gray-400 cursor-not-allowed' : 'bg-amber-400 hover:bg-amber-500'} text-white px-4 py-2 rounded-lg flex items-center gap-2 transition`}
           title={templates.length >= 10 ? "Maximum 10 templates reached" : ""}
         >
           <Plus size={20} />
@@ -339,7 +339,7 @@ const WeightBreakForm: React.FC<WeightBreakFormProps> = ({
             <div className="flex items-end">
               <button
                 onClick={onAddBreak}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-semibold transition"
+                className="w-full bg-amber-400 hover:bg-amber-500 text-slate-900 px-3 py-1.5 rounded text-sm font-semibold transition"
               >
                 Add
               </button>
@@ -375,7 +375,7 @@ const WeightBreakForm: React.FC<WeightBreakFormProps> = ({
           </button>
           <button
             onClick={onSave}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition"
+            className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-slate-900 rounded-lg flex items-center gap-2 transition"
           >
             <Save size={18} />
             {isEditing ? "Update" : "Create"} Template

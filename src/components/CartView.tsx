@@ -279,7 +279,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
                 onClick={() => setDocumentMode("QUOTE")}
                 className={`px-4 py-2 text-xs font-bold rounded transition ${
                   documentMode === "QUOTE"
-                    ? "bg-blue-600 text-white"
+                    ? "bg-amber-400 text-slate-900"
                     : "text-slate-600 hover:bg-slate-50"
                 }`}
               >
@@ -289,7 +289,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
                 onClick={() => setDocumentMode("INVOICE")}
                 className={`px-4 py-2 text-xs font-bold rounded transition ${
                   documentMode === "INVOICE"
-                    ? "bg-blue-600 text-white"
+                    ? "bg-amber-400 text-slate-900"
                     : "text-slate-600 hover:bg-slate-50"
                 }`}
               >
@@ -476,7 +476,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
                           }
                           setIsAddingAddress(false);
                         }}
-                        className="bg-blue-600 text-white text-[10px] font-bold uppercase px-3 py-1.5 rounded"
+                        className="bg-amber-400 text-slate-900 text-[10px] font-bold uppercase px-3 py-1.5 rounded"
                       >
                         Use this address
                       </button>
@@ -520,7 +520,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
                     onClick={() => setOrderForMode(tab.value)}
                     className={`text-[10px] font-bold uppercase tracking-wider py-2 rounded-md transition ${
                       orderForMode === tab.value
-                        ? "bg-blue-600 text-white shadow-sm"
+                        ? "bg-amber-400 text-slate-900 shadow-sm"
                         : "text-slate-600 hover:bg-white"
                     }`}
                   >

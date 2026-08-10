@@ -164,6 +164,8 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
       case "paid": return "bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full";
       case "shipped": return "bg-blue-50 text-blue-705 border border-blue-200 rounded-full";
       case "cancelled": return "bg-slate-100 text-slate-600 border border-slate-200 rounded-full";
+      case "packed": return "bg-purple-50 text-purple-700 border border-purple-200 rounded-full";
+      case "sent": return "bg-teal-50 text-teal-700 border border-teal-200 rounded-full";
       default: return "bg-slate-50 text-slate-700 border border-slate-250 rounded-full";
     }
   };
@@ -177,6 +179,8 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
       case "declined": return "Declined";
       case "paid": return "Paid & Settled";
       case "shipped": return "Dispatched / Shipped";
+      case "packed": return "Packed";
+      case "sent": return "Sent";
       case "cancelled": return "Cancelled";
       default: return "Awaiting Action";
     }
@@ -231,6 +235,28 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
             >
               <CreditCard className="w-4 h-4 text-slate-600" />
               Mark as Paid
+            </button>
+          )}
+
+          {isAdmin && !isQuote && order.status !== "packed" && order.status !== "sent" && order.status !== "shipped" && order.status !== "cancelled" && (
+            <button
+              id="mark_packed_btn"
+              onClick={() => updateOrderStatus(order.id, "packed")}
+              className="border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1.5 font-mono"
+            >
+              <Truck className="w-4 h-4 text-slate-600" />
+              Pack Order
+            </button>
+          )}
+
+          {isAdmin && !isQuote && order.status === "packed" && (
+            <button
+              id="mark_sent_btn"
+              onClick={() => updateOrderStatus(order.id, "sent")}
+              className="border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1.5 font-mono"
+            >
+              <Check className="w-4 h-4 text-slate-600" />
+              Send Order
             </button>
           )}
 

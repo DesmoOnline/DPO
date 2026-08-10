@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { PortalProvider, usePortal } from "./context/PortalContext";
 import { Header } from "./components/Header";
 import { CatalogView } from "./components/CatalogView";

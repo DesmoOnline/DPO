@@ -310,7 +310,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
                     placeholder="Add color"
                     className="flex-1 bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                   />
-                  <button type="button" onClick={handleAddEditColor} className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg text-xs font-bold uppercase">Add</button>
+                  <button type="button" onClick={handleAddEditColor} className="bg-amber-400 hover:bg-amber-500 text-slate-900 px-3 rounded-lg text-xs font-bold uppercase">Add</button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {(editProdForm.colors || []).length === 0 ? (
@@ -335,7 +335,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
                   <option value="fixed">Fixed $</option>
                 </select>
                 <input type="number" min="0" step="0.01" value={editProdQbValue} onChange={(e) => setEditProdQbValue(Math.max(0, parseFloat(e.target.value) || 0))} className="bg-white border border-slate-200 rounded-lg p-2 text-xs font-mono focus:outline-none focus:border-blue-500" />
-                <button type="button" onClick={handleAddEditQtyBreak} className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg text-xs font-bold uppercase">Add</button>
+                <button type="button" onClick={handleAddEditQtyBreak} className="bg-amber-400 hover:bg-amber-500 text-slate-900 px-3 rounded-lg text-xs font-bold uppercase">Add</button>
               </div>
               <div className="space-y-2">
                 {(editProdForm.quantityBreaks || []).length === 0 ? (
@@ -385,7 +385,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
                     setRateBreakName("");
                     setRateBreakQuantityBreaks([]);
                   }}
-                  className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50"
+                  className="px-2.5 py-1 rounded bg-amber-400 hover:bg-amber-500 text-slate-900 text-[10px] font-bold uppercase tracking-wider disabled:opacity-50"
                 >
                   + Add Rate Break
                 </button>
@@ -442,7 +442,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
                     <button
                       type="button"
                       onClick={handleAddRateBreakQtyBreak}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg text-xs font-bold uppercase"
+                      className="bg-amber-400 hover:bg-amber-500 text-slate-900 px-3 rounded-lg text-xs font-bold uppercase"
                     >
                       Add Tier
                     </button>
@@ -480,7 +480,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
                     type="button"
                     onClick={handleSaveRateBreak}
                     disabled={!rateBreakName.trim()}
-                    className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 font-mono"
+                    className="px-3 py-1.5 rounded bg-amber-400 hover:bg-amber-500 text-slate-900 text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 font-mono"
                   >
                     Save Rate Break
                   </button>
@@ -534,7 +534,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ product, onC
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold uppercase tracking-wider">
               Cancel
             </button>
-            <button type="button" onClick={handleSaveEditedProduct} disabled={isSavingEditedProduct || !editProdForm.name.trim() || !editProdForm.sku.trim()} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold uppercase tracking-wider disabled:opacity-50">
+            <button type="button" onClick={handleSaveEditedProduct} disabled={isSavingEditedProduct || !editProdForm.name.trim() || !editProdForm.sku.trim()} className="px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-500 text-slate-900 text-xs font-semibold uppercase tracking-wider disabled:opacity-50">
               {isSavingEditedProduct ? "Saving..." : "Save Changes"}
             </button>
           </div>

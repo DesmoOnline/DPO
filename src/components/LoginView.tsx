@@ -81,7 +81,7 @@ export const LoginView: React.FC<{ onSuccess: () => void; onCancel: () => void }
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold uppercase tracking-widest text-xs py-3 rounded-lg transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+          className="w-full bg-amber-400 hover:bg-amber-500 text-slate-900 font-semibold uppercase tracking-widest text-xs py-3 rounded-lg transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
         >
           {isLoading ? "Authenticating..." : "Log In"}
         </button>

@@ -666,7 +666,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
       <div className="bg-white border border-slate-200 p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm rounded-xl" id="admin_dashboard_header">
         <div className="space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="inline-flex items-center gap-1.5 bg-blue-600 text-white text-[11px] font-bold px-3 py-1 uppercase tracking-wider rounded-full">
+            <div className="inline-flex items-center gap-1.5 bg-amber-400 text-slate-900 text-[11px] font-bold px-3 py-1 uppercase tracking-wider rounded-full">
               Secure Admin Area
             </div>
             <div className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 uppercase tracking-wider rounded-full ${
@@ -788,7 +788,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
               onClick={() => { setActiveSubTab(tab); if (tab !== "customers") setSelectedCustomerId(null); }}
               className={`flex items-center gap-2 px-4 py-2.5 border text-xs font-semibold rounded-lg transition whitespace-nowrap ${
                 activeSubTab === tab
-                  ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                  ? "bg-amber-400 border-blue-600 text-white shadow-sm"
                   : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
               }`}
             >
@@ -817,7 +817,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                     onClick={() => setDateRange(range.id as any)}
                     className={`text-xs font-semibold px-4 py-2 border rounded-lg transition ${
                       dateRange === range.id
-                        ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                        ? "bg-amber-400 border-blue-600 text-white shadow-sm"
                         : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
                     }`}
                   >
@@ -842,7 +842,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                     onClick={() => setReportSortBy(group.id as any)}
                     className={`text-xs font-semibold px-4 py-2 border rounded-lg transition ${
                       reportSortBy === group.id
-                        ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                        ? "bg-amber-400 border-blue-600 text-white shadow-sm"
                         : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
                     }`}
                   >
@@ -965,7 +965,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                 <button
                   id="copy_bas_csv_btn"
                   onClick={handleCopyBasData}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2 px-4 rounded-lg transition shadow-sm flex items-center gap-1.5"
+                  className="bg-amber-400 hover:bg-amber-500 text-slate-900 font-semibold text-xs py-2 px-4 rounded-lg transition shadow-sm flex items-center gap-1.5"
                 >
                   {basCopied ? (
                     <>
@@ -1038,7 +1038,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                         </div>
                         <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200">
                           <div 
-                            className="bg-blue-600 h-full rounded-full transition-all duration-500" 
+                            className="bg-amber-400 h-full rounded-full transition-all duration-500" 
                             style={{ width: `${pct}%` }}
                           />
                         </div>
@@ -1071,7 +1071,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                 setCompanySettingsSaved(true);
                 setTimeout(() => setCompanySettingsSaved(false), 3000);
               }}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-2"
+              className="bg-amber-400 hover:bg-amber-500 text-slate-900 font-semibold py-2 px-6 rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-2"
             >
               {isSavingCompanySettings ? "Saving..." : companySettingsSaved ? <><Check className="w-4 h-4"/> Saved</> : "Save Shipping Settings"}
             </button>
@@ -1135,7 +1135,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                 }
               }}
               disabled={isSavingCompanySettings}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase px-6 py-2.5 rounded-lg shadow-sm transition flex items-center gap-2"
+              className="bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold text-xs uppercase px-6 py-2.5 rounded-lg shadow-sm transition flex items-center gap-2"
             >
               {isSavingCompanySettings ? "Saving..." : companySettingsSaved ? <><Check className="w-4 h-4"/> Saved</> : "Save Settings"}
             </button>
@@ -1326,7 +1326,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                   setAddCustomerError(null);
                   setShowAddCustomerModal(true);
                 }}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold uppercase tracking-wider text-[10px] py-1.5 px-3 rounded shadow-sm transition flex items-center gap-1"
+                className="bg-amber-400 hover:bg-amber-500 text-slate-900 font-semibold uppercase tracking-wider text-[10px] py-1.5 px-3 rounded shadow-sm transition flex items-center gap-1"
               >
                 <Plus className="w-3.5 h-3.5" /> Add
               </button>
@@ -1386,6 +1386,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                     <div>
                       <h3 className="text-lg font-bold uppercase text-slate-900 tracking-tight">{selectedCustomer.companyName}</h3>
                       <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider mt-0.5">{selectedCustomer.email} • Registered {new Date(selectedCustomer.createdAt).toLocaleDateString()}</p>
+                      <div className="mt-3 flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Role:</span>
+                        <select
+                          value={selectedCustomer.role || "customer"}
+                          onChange={(e) => updateCustomerRole(selectedCustomer.id, e.target.value as "customer" | "admin" | "staff")}
+                          className="bg-slate-50 border border-slate-200 text-xs font-semibold rounded px-2 py-1 uppercase tracking-wider focus:ring-1 focus:ring-blue-500 outline-none"
+                        >
+                          <option value="customer">Customer</option>
+                          <option value="staff">Staff Member</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </div>
                     </div>
 
                     <div className="flex gap-2">
@@ -1681,7 +1693,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                                       <button
                                         id={`save_override_${selectedCustomer.id}_${p.id}`}
                                         onClick={() => handleUpdatePriceOverride(selectedCustomer.id, p.id)}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white font-sans rounded-lg p-1.5 transition shadow-sm"
+                                        className="bg-amber-400 hover:bg-amber-500 text-slate-900 font-sans rounded-lg p-1.5 transition shadow-sm"
                                         title="Save price override"
                                       >
                                         <Check className="w-4 h-4 text-white" />
@@ -1739,7 +1751,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                                   onClick={() => toggleRestrictedProductAccess(selectedCustomer.id, p.id)}
                                   className={`px-3 py-1.5 border rounded-lg font-mono text-[10px] font-bold uppercase tracking-wider transition shadow-sm ${
                                     isAllowed 
-                                      ? "bg-blue-600 border-blue-600 text-white" 
+                                      ? "bg-amber-400 border-blue-600 text-white" 
                                       : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
                                   }`}
                                 >
@@ -2098,7 +2110,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
               <button
                 id="create_product_submit_btn"
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg border border-blue-600 shadow-sm uppercase tracking-wider text-xs transition"
+                className="w-full bg-amber-400 hover:bg-amber-500 text-slate-900 font-semibold py-3 rounded-lg border border-blue-600 shadow-sm uppercase tracking-wider text-xs transition"
               >
                 Create Wholesale Product
               </button>
@@ -2138,7 +2150,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                           <button
                             type="button"
                             onClick={() => openEditProductModal(p)}
-                            className="opacity-0 group-hover:opacity-100 transition-all duration-200 bg-blue-600 hover:bg-blue-700 text-white font-bold px-2 py-0.5 rounded text-[10px] flex items-center gap-1 shadow-sm"
+                            className="opacity-0 group-hover:opacity-100 transition-all duration-200 bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold px-2 py-0.5 rounded text-[10px] flex items-center gap-1 shadow-sm"
                             title="Edit Product"
                           >
                             <Pencil className="w-3 h-3" />
@@ -2295,7 +2307,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                             setQuoteShippingMethod(order.freightCompany || "Standard Freight");
                             setQuoteShippingNotes(order.consignmentNote || "");
                           }}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5"
+                          className="bg-amber-400 hover:bg-amber-500 text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5"
                         >
                           <Truck className="w-3.5 h-3.5" />
                           {order.status === "quote_finalized" ? "Edit Shipping" : "Add Shipping"}
@@ -2383,7 +2395,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
               <button
                 onClick={handleFinalizeQuote}
                 disabled={quoteShippingSubmitting || !quoteShippingCost || parseFloat(quoteShippingCost) < 0}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm disabled:opacity-50"
+                className="flex-1 bg-amber-400 hover:bg-amber-500 text-slate-900 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm disabled:opacity-50"
               >
                 {quoteShippingSubmitting ? "Saving..." : "Finalize Quote"}
               </button>
@@ -2527,7 +2539,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                         placeholder="Add color"
                         className="flex-1 bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                       />
-                      <button type="button" onClick={handleAddEditColor} className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg text-xs font-bold uppercase">Add</button>
+                      <button type="button" onClick={handleAddEditColor} className="bg-amber-400 hover:bg-amber-500 text-slate-900 px-3 rounded-lg text-xs font-bold uppercase">Add</button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {(editProdForm.colors || []).length === 0 ? (
@@ -2552,7 +2564,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                       <option value="fixed">Fixed $</option>
                     </select>
                     <input type="number" min="0" step="0.01" value={editProdQbValue} onChange={(e) => setEditProdQbValue(Math.max(0, parseFloat(e.target.value) || 0))} className="bg-white border border-slate-200 rounded-lg p-2 text-xs font-mono focus:outline-none focus:border-blue-500" />
-                    <button type="button" onClick={handleAddEditQtyBreak} className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg text-xs font-bold uppercase">Add</button>
+                    <button type="button" onClick={handleAddEditQtyBreak} className="bg-amber-400 hover:bg-amber-500 text-slate-900 px-3 rounded-lg text-xs font-bold uppercase">Add</button>
                   </div>
                   <div className="space-y-2">
                     {(editProdForm.quantityBreaks || []).length === 0 ? (
@@ -2602,7 +2614,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                         setRateBreakName("");
                         setRateBreakQuantityBreaks([]);
                       }}
-                      className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50"
+                      className="px-2.5 py-1 rounded bg-amber-400 hover:bg-amber-500 text-slate-900 text-[10px] font-bold uppercase tracking-wider disabled:opacity-50"
                     >
                       + Add Rate Break
                     </button>
@@ -2659,7 +2671,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                         <button
                           type="button"
                           onClick={handleAddRateBreakQtyBreak}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg text-xs font-bold uppercase"
+                          className="bg-amber-400 hover:bg-amber-500 text-slate-900 px-3 rounded-lg text-xs font-bold uppercase"
                         >
                           Add Tier
                         </button>
@@ -2697,7 +2709,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                         type="button"
                         onClick={handleSaveRateBreak}
                         disabled={!rateBreakName.trim()}
-                        className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 font-mono"
+                        className="px-3 py-1.5 rounded bg-amber-400 hover:bg-amber-500 text-slate-900 text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 font-mono"
                       >
                         Save Rate Break
                       </button>
@@ -2745,7 +2757,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                 <button type="button" onClick={closeEditProductModal} className="px-4 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold uppercase tracking-wider">
                   Cancel
                 </button>
-                <button type="button" onClick={handleSaveEditedProduct} disabled={isSavingEditedProduct || !editProdForm.name.trim() || !editProdForm.sku.trim()} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold uppercase tracking-wider disabled:opacity-50">
+                <button type="button" onClick={handleSaveEditedProduct} disabled={isSavingEditedProduct || !editProdForm.name.trim() || !editProdForm.sku.trim()} className="px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-500 text-slate-900 text-xs font-semibold uppercase tracking-wider disabled:opacity-50">
                   {isSavingEditedProduct ? "Saving..." : "Save Changes"}
                 </button>
               </div>
@@ -2873,7 +2885,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                 <button
                   type="submit"
                   disabled={isAddingCustomer}
-                  className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold uppercase tracking-wider transition disabled:opacity-50"
+                  className="px-4 py-2.5 rounded-lg bg-amber-400 hover:bg-amber-500 text-slate-900 text-xs font-semibold uppercase tracking-wider transition disabled:opacity-50"
                 >
                   {isAddingCustomer ? "Creating..." : "Create Profile"}
                 </button>

@@ -15,6 +15,8 @@ export type DocumentStatus =
   | "pending_payment"
   | "approved"
   | "declined"
+  | "packed"
+  | "sent"
   | "paid"
   | "shipped"
   | "cancelled";
@@ -86,6 +88,7 @@ export interface CustomerProfile {
   email: string;
   companyName: string;
   status: "pending" | "approved" | "rejected";
+  role?: "customer" | "admin" | "staff";
   createdAt: string;
   approvedAt?: string;
   customPricing?: { [productId: string]: number }; // Custom flat price overrides per product

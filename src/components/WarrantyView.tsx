@@ -159,7 +159,7 @@ export const WarrantyView: React.FC = () => {
             <button
               type="submit"
               disabled={isSubmitting || !selectedOrderId || !selectedProductId || !photoBase64}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isSubmitting ? "Submitting..." : "Submit Claim"}
             </button>

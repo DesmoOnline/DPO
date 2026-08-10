@@ -143,7 +143,7 @@ export const PackingSlipDetail: React.FC<PackingSlipDetailProps> = ({ orderId, o
               <button
                 onClick={handleSaveConsignment}
                 disabled={saving}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2.5 text-xs font-semibold uppercase rounded-lg transition disabled:opacity-50"
+                className="bg-amber-400 hover:bg-amber-500 text-slate-900 px-3 py-2.5 text-xs font-semibold uppercase rounded-lg transition disabled:opacity-50"
               >
                 Save
               </button>

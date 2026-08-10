@@ -219,7 +219,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderId, onClose
               <button
                 onClick={handleAddItem}
                 disabled={!selectedProductId || newQty < 1}
-                className="bg-blue-600 disabled:bg-blue-300 text-white p-2 rounded hover:bg-blue-700 transition"
+                className="bg-amber-400 disabled:bg-blue-300 text-white p-2 rounded hover:bg-amber-500 transition"
                 title="Add Item"
               >
                 <Plus className="w-4 h-4" />
