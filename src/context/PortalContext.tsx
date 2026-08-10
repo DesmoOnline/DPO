@@ -110,6 +110,7 @@ interface PortalContextType {
   deleteOrder: (orderId: string) => Promise<void>;
   addShippingCharge: (orderId: string, shippingCharge: number, creditAdjustment?: number) => Promise<void>;
   requestShippingReview: (orderId: string, notes?: string) => Promise<void>;
+  replicateOrder: (orderId: string) => Promise<string>;
   
   // Settings
   companySettings: CompanySettings;
@@ -1367,6 +1368,40 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const replicateOrder = async (orderId: string): Promise<string> => {
+    const src = orders.find(o => o.id === orderId);
+    if (!src) throw new Error("Source order/quote not found");
+
+    const isQuote = src.documentType === "QUOTE";
+    const prefix = isQuote ? "QTE" : "INV";
+    const nextId = `${prefix}-${Date.now().toString().slice(-5)}${Math.floor(10 + Math.random() * 90)}`;
+
+    const newOrder: Order = {
+      ...src,
+      id: nextId,
+      status: isQuote ? "quote_finalized" : "pending_approval",
+      createdAt: new Date().toISOString(),
+      approvedAt: undefined,
+      paidAt: undefined,
+      shippedAt: undefined,
+      packingStatus: undefined,
+      consignmentNote: undefined,
+      freightCompany: undefined
+    };
+
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await setDoc(doc(db, "orders", nextId), newOrder);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, `orders/${nextId}`);
+        throw error;
+      }
+    } else {
+      setOrders(prev => [newOrder, ...prev]);
+    }
+    return nextId;
+  };
+
   // Admin Actions
   const approveCustomer = async (customerId: string) => {
     if (!isAdmin && isFirebase) return;
@@ -2115,6 +2150,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteOrder,
         addShippingCharge,
         requestShippingReview,
+        replicateOrder,
         companySettings,
         warranties, submitWarrantyClaim, updateWarrantyStatus, getCustomer360, updateCompanySettings,
         pricingTiers,

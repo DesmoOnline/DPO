@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { usePortal } from "../context/PortalContext";
+import { useToast } from "./ui/ToastContext";
 import { Product, CustomerProfile, Order, GSTReportData, QuantityBreak } from "../types";
 import { 
   Users, 
@@ -30,6 +31,7 @@ import { WarrantyAdminPanel } from "./WarrantyAdminPanel";
 import { Warranty } from "../types";
 
 export const AdminDashboard: React.FC = () => {
+  const { showToast } = useToast();
   const { 
     customers, 
     products, 
@@ -54,7 +56,8 @@ export const AdminDashboard: React.FC = () => {
     companySettings,
     updateCompanySettings,
     createCustomerProfile,
-    deleteCustomerProfile
+    deleteCustomerProfile,
+    replicateOrder
   } = usePortal();
 
   const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products" | "company" | "shipping" | "quotes" | "rateBreaks" | "warranties">("accounting");
@@ -1447,6 +1450,77 @@ export const AdminDashboard: React.FC = () => {
                       <p className="text-[10px] text-slate-400 italic">
                         📝 Note: Create rate break profiles in the "Rate Break Profiles" admin tab first, then they'll appear here.
                       </p>
+                    </div>
+                  </div>
+                )}
+
+                 {/* Quotes & Invoices History */}
+                {selectedCustomer.status === "approved" && (
+                  <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 shadow-sm">
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-2">
+                      Quotes & Invoices History
+                    </h4>
+                    <p className="text-xs text-slate-500 leading-normal">
+                      Overview of all orders, quotes, and transactions generated for this customer.
+                    </p>
+
+                    <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                      {orders
+                        .filter(o => o.customerId === selectedCustomer.id)
+                        .length === 0 ? (
+                          <div className="text-center text-slate-400 py-6 text-xs uppercase tracking-wider font-mono">
+                            No transaction history recorded
+                          </div>
+                        ) : (
+                          orders
+                            .filter(o => o.customerId === selectedCustomer.id)
+                            .map((order) => {
+                              const isQuote = order.documentType === "QUOTE";
+                              return (
+                                <div key={order.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex items-center justify-between gap-4 text-xs font-mono">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-slate-900">{order.id}</span>
+                                      <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                        order.status === "paid" || order.status === "shipped" 
+                                          ? "bg-emerald-100 text-emerald-800" 
+                                          : order.status === "cancelled" || order.status === "declined"
+                                          ? "bg-red-100 text-red-800"
+                                          : "bg-amber-100 text-amber-800"
+                                      }`}>
+                                        {order.status.replace("_", " ")}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 font-sans">
+                                      {new Date(order.createdAt).toLocaleDateString()} • {order.items.length} items
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center gap-4">
+                                    <span className="font-bold text-slate-900">${order.totalAmount.toFixed(2)} AUD</span>
+                                    {isQuote && (
+                                      <button
+                                        onClick={async () => {
+                                          if (confirm(`Are you sure you want to replicate quote ${order.id} for quick reordering?`)) {
+                                            try {
+                                              const newId = await replicateOrder(order.id);
+                                              showToast("Quote Replicated", `New Quote ${newId} has been created successfully.`, "success");
+                                            } catch (err: any) {
+                                              showToast("Replication Failed", err?.message || "Error duplicating quote", "error");
+                                            }
+                                          }
+                                        }}
+                                        className="bg-amber-500 hover:bg-amber-600 text-white font-sans text-[10px] font-bold uppercase py-1.5 px-3 rounded shadow-sm transition flex items-center gap-1"
+                                        title="Replicate this quote for quick reordering"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" /> Replicate
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })
+                        )}
                     </div>
                   </div>
                 )}
