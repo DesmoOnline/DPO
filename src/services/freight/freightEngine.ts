@@ -6,6 +6,7 @@ export interface FreightCalculationInput {
   isPalletized?: boolean;
   shippingBaseRate?: number;
   shippingPerKgRate?: number;
+  shippingMinPrice?: number;
 }
 
 export interface FreightResult {
@@ -25,7 +26,8 @@ export class FreightEngine {
       totalWeightKg = 0, 
       isPalletized = false,
       shippingBaseRate = 20.0,
-      shippingPerKgRate = 1.20
+      shippingPerKgRate = 1.20,
+      shippingMinPrice = 20.0
     } = input;
     
     if (subtotal >= this.freeFreightThreshold) {
@@ -41,6 +43,9 @@ export class FreightEngine {
     const remaining = this.freeFreightThreshold - subtotal;
 
     let baseCharge = shippingBaseRate + (totalWeightKg * shippingPerKgRate);
+    if (baseCharge < shippingMinPrice) {
+      baseCharge = shippingMinPrice;
+    }
 
     if (isPalletized) {
       baseCharge += 120.0;

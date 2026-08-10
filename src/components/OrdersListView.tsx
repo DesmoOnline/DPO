@@ -756,9 +756,14 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                 {filteredAndSortedOrders.map((order) => {
                   const overdue = isInvoiceOverdue(order);
                   return (
-                  <tr key={order.id} id={`ledger_row_${order.id}`} className={`hover:bg-slate-50/50 transition`}>
-                    <td className="px-5 py-4 font-bold text-slate-900">
-                      {order.id}
+                  <tr 
+                    key={order.id} 
+                    id={`ledger_row_${order.id}`} 
+                    onClick={() => onViewInvoice(order.id)}
+                    className="hover:bg-blue-50/70 transition cursor-pointer group"
+                  >
+                    <td className="px-5 py-4 font-bold text-slate-900 group-hover:text-blue-700 transition">
+                      <span className="group-hover:underline underline-offset-4 decoration-blue-500 font-extrabold">{order.id}</span>
                       {order.documentType === "QUOTE" && (
                         <span className="ml-2 text-[8px] bg-amber-50 text-slate-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-bold uppercase">Quote</span>
                       )}
@@ -793,7 +798,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                       <div className="inline-flex items-center gap-2">
                         <button
                           id={`view_inv_${order.id}`}
-                          onClick={() => onViewInvoice(order.id)}
+                          onClick={(e) => { e.stopPropagation(); onViewInvoice(order.id); }}
                           className="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 py-1.5 px-3 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1"
                           title={order.documentType === "QUOTE" ? "View Quote" : "View Invoice"}
                         >
@@ -803,7 +808,8 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                         {isAdmin && (
                           <button
                             id={`view_slip_${order.id}`}
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               const o = orders.find(x => x.id === order.id);
                               setFreightCompany(o?.freightCompany || "Team Global Express");
                               setConsignmentNote(o?.consignmentNote || "");
@@ -825,7 +831,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                           {order.status === "pending_approval" && (
                             <button
                               id={`approve_${order.id}`}
-                              onClick={() => approveOrder(order.id)}
+                              onClick={(e) => { e.stopPropagation(); approveOrder(order.id); }}
                               className="border border-emerald-200 bg-slate-50 hover:bg-slate-100 text-slate-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                               title="Approve Order"
                             >
@@ -838,7 +844,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                           {order.status === "pending_approval" && (
                             <button
                               id={`decline_${order.id}`}
-                              onClick={() => declineOrder(order.id)}
+                              onClick={(e) => { e.stopPropagation(); declineOrder(order.id); }}
                               className="border border-red-200 bg-red-50 hover:bg-red-100 text-slate-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                               title="Decline Order"
                             >
@@ -851,7 +857,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                           {order.status !== "cancelled" && order.status !== "shipped" && (
                             <button
                               id={`edit_${order.id}`}
-                              onClick={() => setEditModalOrderId(order.id)}
+                              onClick={(e) => { e.stopPropagation(); setEditModalOrderId(order.id); }}
                               className="border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                               title="Edit Order"
                             >
@@ -864,7 +870,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                           {order.status !== "cancelled" && order.status !== "shipped" && order.status !== "declined" && (
                             <button
                               id={`cancel_${order.id}`}
-                              onClick={() => updateOrderStatus(order.id, "cancelled")}
+                              onClick={(e) => { e.stopPropagation(); updateOrderStatus(order.id, "cancelled"); }}
                               className="border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-600 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                               title="Cancel Order"
                             >
@@ -877,7 +883,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                           {order.status !== "cancelled" && order.status !== "declined" && (
                             <button
                               id={`shipping_${order.id}`}
-                              onClick={() => { setShippingModalOrderId(order.id); setShippingAmount(order.shippingCharge?.toString() || ""); }}
+                              onClick={(e) => { e.stopPropagation(); setShippingModalOrderId(order.id); setShippingAmount(order.shippingCharge?.toString() || ""); }}
                               className="border border-amber-200 bg-amber-50 hover:bg-amber-100 text-slate-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                               title="Add Shipping Charge"
                             >
@@ -890,7 +896,7 @@ export const OrdersListView: React.FC<OrdersListViewProps> = ({ onViewInvoice, o
                           {isAdmin && (
                             <button
                               id={`delete_${order.id}`}
-                              onClick={() => setDeleteConfirmOrderId(order.id)}
+                              onClick={(e) => { e.stopPropagation(); setDeleteConfirmOrderId(order.id); }}
                               className="border border-red-200 bg-red-50 hover:bg-red-100 text-slate-700 py-1 px-2.5 text-[10px] font-bold uppercase tracking-wider transition rounded-lg inline-flex items-center gap-1"
                               title="Delete Record"
                             >

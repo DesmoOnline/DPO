@@ -110,7 +110,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
               Pending Approval
             </div>
             <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              Registration Received for <span className="text-blue-600 dark:text-blue-400 font-semibold">{currentUser?.companyName}</span>
+              Registration Received for <span className="text-slate-900 dark:text-white font-bold">{currentUser?.companyName}</span>
             </h2>
             <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
               Your account is currently under review by lew@desmoproducts.com.au. Once approved, you will be sent your welcome credentials, see your customized dealer pricing, and can place orders. Standard catalog browsing is enabled below without wholesale rates.
@@ -120,13 +120,13 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
       )}
 
       {isApproved && (
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 rounded-2xl shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-slate-950 p-6 rounded-2xl shadow-md flex flex-col md:flex-row items-center justify-between gap-4 border border-amber-300">
           <div>
-            <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider bg-white/20 px-3 py-1 rounded-full backdrop-blur-md mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" /> Authorized Wholesale Account
+            <div className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider bg-slate-950/20 text-slate-950 px-3 py-1 rounded-full backdrop-blur-md mb-2">
+              <Sparkles className="w-3.5 h-3.5 text-slate-950" /> Authorized Wholesale Account
             </div>
-            <h3 className="text-xl font-bold">Welcome back, {currentUser.companyName}</h3>
-            <p className="text-xs text-blue-100 mt-1">Tier & Volume Rate Breaks automatically applied at checkout.</p>
+            <h3 className="text-xl font-black tracking-tight">Welcome back, {currentUser.companyName}</h3>
+            <p className="text-xs text-slate-900 font-semibold mt-1">Tier & Volume Rate Breaks automatically applied at checkout.</p>
           </div>
           {onOpenQuickOrder && (
             <Button
@@ -179,13 +179,13 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
           return (
             <div
               key={product.id}
-              className="group flex flex-col justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-200"
+              className="group flex flex-col justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
+              onClick={() => onOpenProductDetail(product.id)}
             >
               <div className="space-y-4">
                 {/* Image Placeholder */}
                 <div
-                  className="relative h-48 w-full bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden cursor-pointer flex items-center justify-center"
-                  onClick={() => onOpenProductDetail(product.id)}
+                  className="relative h-48 w-full bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden flex items-center justify-center"
                 >
                   {product.imageUrl ? (
                     <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -198,13 +198,12 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                 </div>
 
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">
                     {product.category || "General"}
                   </span>
                   <div className="flex items-center justify-between gap-2 group/title">
                     <h4
-                      className="text-base font-bold text-slate-900 dark:text-slate-100 line-clamp-1 cursor-pointer hover:text-blue-600"
-                      onClick={() => onOpenProductDetail(product.id)}
+                      className="text-base font-bold text-slate-900 dark:text-slate-100 line-clamp-1 group-hover/title:text-amber-500 transition-colors"
                     >
                       {product.name}
                     </h4>
@@ -215,7 +214,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                           e.stopPropagation();
                           onEditProduct(product.id);
                         }}
-                        className="opacity-0 group-hover/title:opacity-100 transition-opacity bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 shrink-0"
+                        className="opacity-0 group-hover/title:opacity-100 transition-opacity bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 shrink-0"
                         title="Edit Product Details"
                       >
                         <Pencil className="w-3 h-3" /> Edit
@@ -238,7 +237,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                 </div>
 
                 {isApproved && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="number"
                       min="1"

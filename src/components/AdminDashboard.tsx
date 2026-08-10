@@ -1046,7 +1046,7 @@ export const AdminDashboard: React.FC = () => {
             </button>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-2">
               <label className="text-[11px] font-mono text-slate-500 uppercase tracking-widest block font-semibold">Base Freight Charge ($):</label>
               <input
@@ -1066,6 +1066,17 @@ export const AdminDashboard: React.FC = () => {
                 step="0.01"
                 value={csForm.shippingPerKgRate ?? 1.20}
                 onChange={e => setCsForm(prev => ({ ...prev, shippingPerKgRate: parseFloat(e.target.value) || 0 }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[11px] font-mono text-slate-500 uppercase tracking-widest block font-semibold">Minimum Freight Charge ($):</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={csForm.shippingMinPrice ?? 20}
+                onChange={e => setCsForm(prev => ({ ...prev, shippingMinPrice: parseFloat(e.target.value) || 0 }))}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition text-sm"
               />
             </div>

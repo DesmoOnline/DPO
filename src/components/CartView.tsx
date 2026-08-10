@@ -19,6 +19,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
     removeFromCart, 
     placeOrder,
     isActualAdmin,
+    isAdmin,
     customers,
     companySettings
   } = usePortal();
@@ -70,7 +71,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
   if (!currentUser || (!isActualAdmin && currentUser.status !== "approved")) {
     return (
       <div className="bg-white border border-slate-200 p-10 text-center shadow-sm rounded-xl" id="cart_unauthorized">
-        <ShoppingCart className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+        <ShoppingCart className="w-12 h-12 text-slate-900 mx-auto mb-4" />
         <h3 className="text-slate-800 font-bold text-xl tracking-tight">Access Denied</h3>
         <p className="text-slate-500 text-xs mt-2 uppercase font-mono font-semibold tracking-wide">Only approved wholesale customers can access the shopping cart.</p>
       </div>
@@ -80,14 +81,14 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
   if (cart.length === 0) {
     return (
       <div className="text-center py-20 bg-white border border-slate-200 shadow-sm rounded-xl" id="cart_empty">
-        <ShoppingBag className="w-12 h-12 text-blue-600 mx-auto mb-4 animate-bounce" />
+        <ShoppingBag className="w-12 h-12 text-amber-500 mx-auto mb-4 animate-bounce" />
         <h3 className="text-slate-850 font-bold text-lg tracking-tight">Wholesale Cart is Empty</h3>
         <p className="text-slate-500 text-xs mt-2 max-w-md mx-auto leading-relaxed font-semibold">
           Add precision multimeters, safety compliance testers, digital oscilloscopes, or high-voltage diagnostics equipment from the catalog to build your order list.
         </p>
         <button 
           onClick={onNavigateToCatalog} 
-          className="mt-6 border border-blue-600 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs tracking-wider transition rounded-lg py-3 px-6 shadow-sm"
+          className="mt-6 border border-amber-400 bg-amber-400 hover:bg-amber-500 text-slate-950 font-extrabold text-xs tracking-wider transition rounded-lg py-3 px-6 shadow-sm"
         >
           Browse Equipment Catalog
         </button>
@@ -190,7 +191,8 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
     totalWeightKg,
     totalCubicMeters,
     shippingBaseRate: companySettings.shippingBaseRate,
-    shippingPerKgRate: companySettings.shippingPerKgRate
+    shippingPerKgRate: companySettings.shippingPerKgRate,
+    shippingMinPrice: companySettings.shippingMinPrice
   });
 
   const activeFreightCharge = ownTransport ? 0 : freightInfo.charge;
@@ -643,7 +645,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
               id="submit_wholesale_order_btn"
               onClick={handleSubmitOrder}
               disabled={isSubmitting || !canSubmit()}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold uppercase tracking-widest text-xs py-3.5 rounded-lg transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-amber-400 hover:bg-amber-500 text-slate-950 font-extrabold uppercase tracking-widest text-xs py-3.5 rounded-lg transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <>
@@ -654,7 +656,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
                   Processing {documentMode === "QUOTE" ? "Quote" : "Invoice"}...
                 </>
               ) : !canSubmit() ? (
-                "Select Customer First"
+                isAdmin && orderForMode === "registered" && !selectedCustomerId ? "Select Customer First" : "Select Transport Method"
               ) : (
                 <>
                   <FileText className="w-4 h-4" />

@@ -9,10 +9,11 @@ interface InvoiceDetailProps {
   orderId: string;
   onBack: () => void;
   onViewPackingSlip: (orderId: string) => void;
+  onViewInvoice?: (orderId: string) => void;
 }
 
-export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, onViewPackingSlip }) => {
-  const { orders, isAdmin, updateOrderStatus, approveOrder, declineOrder, companySettings, products, addToCart, requestShippingReview } = usePortal();
+export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, onViewPackingSlip, onViewInvoice }) => {
+  const { orders, isAdmin, updateOrderStatus, approveOrder, declineOrder, companySettings, products, addToCart, requestShippingReview, updateOrderDispatch } = usePortal();
   const { showToast } = useToast();
   const [isEmailing, setIsEmailing] = React.useState(false);
   const [emailStatus, setEmailStatus] = React.useState<"idle" | "success" | "error">("idle");
@@ -69,7 +70,10 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
   }
 
   const handlePrint = () => {
-    window.print();
+    const pdf = generateInvoicePDF(order, companySettings);
+    pdf.autoPrint();
+    const blobUrl = pdf.output("bloburl");
+    window.open(blobUrl, "_blank");
   };
 
   const handleDownloadPDF = () => {
@@ -94,7 +98,9 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
 
   const handleApproveQuote = async () => {
     const newId = await approveOrder(order.id);
-    if (newId && newId !== order.id) {
+    if (onViewInvoice) {
+      onViewInvoice(newId || order.id);
+    } else if (newId && newId !== order.id) {
       onBack();
     }
     showToast("Purchase Order Created", `Quote converted to active Tax Invoice / Purchase Order.`, "success");
@@ -229,15 +235,6 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
           )}
 
           <button
-            id="download_invoice_pdf_btn"
-            onClick={handleDownloadPDF}
-            className="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1.5 font-mono"
-          >
-            <FileDown className="w-4 h-4 text-blue-600" />
-            Download PDF
-          </button>
-
-          <button
             id="reorder_items_btn"
             onClick={handleReorder}
             className="border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1.5 font-mono"
@@ -254,6 +251,39 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
             <Printer className="w-4 h-4 text-slate-300" />
             {isQuote ? "Print Quote" : "Print Invoice"}
           </button>
+
+          {!isAdmin && isQuote && (order.status === "quote_finalized" || order.status === "quote_requested") && !isQuoteExpired && (
+            <button onClick={() => setShowReviewModal(true)} className="border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm font-mono inline-flex items-center gap-1.5">
+              Shipping Review
+            </button>
+          )}
+
+          <button
+            id="download_invoice_pdf_btn"
+            onClick={handleDownloadPDF}
+            className="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm inline-flex items-center gap-1.5 font-mono"
+          >
+            <FileDown className="w-4 h-4 text-blue-600" />
+            Download PDF
+          </button>
+
+          {!isAdmin && isQuote && (order.status === "quote_finalized" || order.status === "quote_requested") && (
+            <>
+              {isQuoteExpired ? (
+                <button disabled className="border border-slate-200 bg-slate-100 text-slate-400 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm font-mono cursor-not-allowed">
+                  Quote Expired
+                </button>
+              ) : (
+                <button onClick={handleApproveQuote} className="border border-slate-600 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm font-mono inline-flex items-center gap-1.5">
+                  Purchase
+                </button>
+              )}
+              <button onClick={() => declineOrder(order.id)} className="border border-slate-300 bg-white hover:bg-slate-50 text-red-650 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition rounded-lg shadow-sm font-mono inline-flex items-center gap-1.5">
+                Decline Quote
+              </button>
+            </>
+          )}
+
         </div>
       </div>
 
@@ -278,7 +308,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
       )}
 
       {/* Order Confirmation Banner */}
-      {isQuote && order.status === "quote_requested" && (
+      {isQuote && order.status === "quote_requested" && !order.ownTransport && (
       <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3 shadow-sm mb-6" id="invoice_pending_banner">
         <Clock className="w-5 h-5 text-slate-600 flex-shrink-0 mt-0.5" />
         <div>
@@ -356,8 +386,14 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-200 pb-6 gap-6">
           <div className="space-y-1">
             <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight uppercase">{isQuote ? "QUOTE" : "TAX INVOICE"}</h1>
-            <p className="text-slate-500 font-mono text-xs font-semibold">
-              REF: <span className="text-slate-800">{order.id}</span>
+            <p className="text-slate-500 font-mono text-xs font-semibold flex items-center gap-2 mt-1">
+              <span>REF: <span className="text-slate-800">{order.id}</span></span>
+              {order.packingStatus === "Packed" && (
+                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded text-[10px] uppercase font-bold">Packed</span>
+              )}
+              {order.status === "shipped" && (
+                <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded text-[10px] uppercase font-bold">Sent</span>
+              )}
               {isQuote && (
                 <span className="ml-2 inline-flex items-center gap-1 bg-amber-50 text-slate-700 border border-amber-200 px-2 py-1 rounded-full text-[10px] font-bold uppercase">
                   <FileText className="w-3 h-3" />
@@ -477,9 +513,9 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
               <span>GST (Tax 10%):</span>
               <span className="text-slate-900 font-bold">${order.gstAmount.toFixed(2)} AUD</span>
             </div>
-            <div className="border-t border-slate-200 pt-4 flex justify-between items-center text-sm font-sans">
-              <span className="text-slate-800 font-semibold tracking-tight">TOTAL INVOICE AMOUNT:</span>
-              <span className="text-blue-600 font-bold text-xl font-mono">${order.totalAmount.toFixed(2)} AUD</span>
+            <div className="border-t border-slate-200 pt-4 flex justify-between items-center text-sm font-sans gap-4">
+              <span className="text-slate-800 font-semibold tracking-tight whitespace-nowrap">TOTAL INVOICE AMOUNT:</span>
+              <span className="text-blue-600 font-bold text-base font-mono whitespace-nowrap">${order.totalAmount.toFixed(2)} AUD</span>
             </div>
           </div>
         </div>
@@ -504,24 +540,22 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
       </div>
 
       {/* Admin Operations Block */}
-      {(isAdmin || order.status === "approved" || (isQuote && order.status === "quote_finalized")) && (
+      {isAdmin && (
         <div className="bg-white border border-slate-200 p-6 space-y-4 rounded-xl shadow-sm print:hidden" id="admin_invoice_operations">
           <h3 className="text-sm font-bold text-slate-800 font-mono uppercase tracking-wider flex items-center gap-1.5">
             <Truck className="w-5 h-5 text-blue-600" />
-            {isAdmin ? "Lew's Desk: Order & Logistics Desk" : "Payment Simulator Terminal"}
+            Lew's Desk: Order & Logistics Desk
           </h3>
           <p className="text-xs text-slate-500 font-medium leading-relaxed">
-            {isAdmin 
-              ? "As Lew, update payment and dispatch state. This generates correct tax and GST reporting data instantly."
-              : "Simulate a direct bank deposit payment to settle this approved wholesale invoice."}
+            As Lew, update payment and dispatch state. This generates correct tax and GST reporting data instantly.
           </p>
 
           <div className="flex flex-wrap gap-2.5 pt-1">
-            {order.status === "pending_approval" && isAdmin && (
+            {order.status === "pending_approval" && (
               <>
                 <button
                   id="admin_approve_order_btn"
-                  onClick={() => approveOrder(order.id)}
+                  onClick={handleApproveQuote}
                   className="bg-slate-900 hover:bg-slate-800 text-white font-semibold uppercase text-xs tracking-wider border border-slate-600 rounded-lg py-3 px-4 shadow-sm transition"
                 >
                   Confirm & Approve Order
@@ -532,43 +566,6 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
                   className="bg-white hover:bg-slate-50 text-red-650 font-semibold uppercase text-xs tracking-wider border border-slate-200 rounded-lg py-3 px-4 shadow-sm transition"
                 >
                   Decline Order
-                </button>
-              </>
-            )}
-
-            {isQuote && order.status === "quote_finalized" && !isAdmin && (
-              <>
-                {isQuoteExpired ? (
-                  <button
-                    disabled
-                    className="bg-slate-100 text-slate-400 font-semibold uppercase text-xs tracking-wider border border-slate-200 rounded-lg py-3 px-4 shadow-sm cursor-not-allowed"
-                  >
-                    Quote Expired (Re-quote Required)
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      id="customer_approve_quote_btn"
-                      onClick={handleApproveQuote}
-                      className="bg-slate-900 hover:bg-slate-800 text-white font-semibold uppercase text-xs tracking-wider border border-slate-600 rounded-lg py-3 px-4 shadow-sm transition"
-                    >
-                      Proceed to Purchase
-                    </button>
-                    <button
-                      id="customer_request_review_btn"
-                      onClick={() => setShowReviewModal(true)}
-                      className="bg-white hover:bg-slate-50 text-slate-700 font-semibold uppercase text-xs tracking-wider border border-slate-300 rounded-lg py-3 px-4 shadow-sm transition"
-                    >
-                      Request Shipping Review
-                    </button>
-                  </>
-                )}
-                <button
-                  id="customer_decline_quote_btn"
-                  onClick={() => declineOrder(order.id)}
-                  className="bg-white hover:bg-slate-50 text-slate-700 font-semibold uppercase text-xs tracking-wider border border-slate-200 rounded-lg py-3 px-4 shadow-sm transition"
-                >
-                  Decline Quote
                 </button>
               </>
             )}
@@ -584,13 +581,24 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
             )}
 
             {order.status === "paid" && isAdmin && (
-              <button
-                id="admin_mark_shipped_btn"
-                onClick={() => updateOrderStatus(order.id, "shipped")}
-                className="bg-slate-900 hover:bg-slate-800 text-white font-semibold uppercase text-xs tracking-wider border border-blue-600 rounded-lg py-3 px-4 shadow-sm transition"
-              >
-                Dispatch Order (Mark as Shipped)
-              </button>
+              <>
+                {order.packingStatus !== "Packed" && (
+                  <button
+                    id="admin_mark_packed_btn"
+                    onClick={() => updateOrderDispatch(order.id, { freightCompany: order.freightCompany || "", consignmentNote: order.consignmentNote || "", packingStatus: "Packed" })}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold uppercase text-xs tracking-wider border border-emerald-600 rounded-lg py-3 px-4 shadow-sm transition"
+                  >
+                    Mark as Packed
+                  </button>
+                )}
+                <button
+                  id="admin_mark_shipped_btn"
+                  onClick={() => updateOrderStatus(order.id, "shipped")}
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-semibold uppercase text-xs tracking-wider border border-slate-600 rounded-lg py-3 px-4 shadow-sm transition"
+                >
+                  Mark as Sent (Dispatched)
+                </button>
+              </>
             )}
 
             {order.status !== "cancelled" && order.status !== "declined" && order.status !== "shipped" && isAdmin && (

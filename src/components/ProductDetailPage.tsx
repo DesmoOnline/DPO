@@ -126,7 +126,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
                 category={product.category}
               />
               {product.isRestricted && (
-                <div className="absolute top-4 right-4 bg-blue-600 text-white font-mono text-[10px] px-3 py-1.5 font-semibold uppercase tracking-wider rounded-lg shadow-sm flex items-center gap-1.5">
+                <div className="absolute top-4 right-4 bg-slate-900 text-white font-mono text-[10px] px-3 py-1.5 font-semibold uppercase tracking-wider rounded-lg shadow-sm flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-white" />
                   RESTRICTED EQUIPMENT
                 </div>
@@ -144,7 +144,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
             
             <div className="space-y-6">
               <div className="space-y-2">
-                <span className="text-xs font-bold text-blue-600 uppercase tracking-widest font-mono block">
+                <span className="text-xs font-bold text-slate-900 uppercase tracking-widest font-mono block">
                   {product.category || "Electrical Instrument"}
                 </span>
                 <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
@@ -160,7 +160,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
               {isGuest || isPending ? (
                 <div className="bg-slate-50 border border-slate-200 p-6 text-center rounded-xl">
                   <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-semibold block mb-2">Pricing Restricted</span>
-                  <p className="text-sm text-blue-600 font-bold uppercase">Rates hidden for unapproved guests</p>
+                  <p className="text-sm text-slate-900 font-bold uppercase">Rates hidden for unapproved guests</p>
                   <p className="text-xs text-slate-500 mt-2 leading-relaxed font-medium">
                     Wholesale pricing breaks are only visible to logged-in, approved dealer accounts. Please request an account or log in.
                   </p>
@@ -176,7 +176,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
                             ${product.baseWholesalePrice.toFixed(2)}
                           </span>
                         )}
-                        <span className="text-xl font-bold text-blue-600 font-mono">
+                        <span className="text-xl font-bold text-slate-900 font-mono">
                           ${activePrice.toFixed(2)} <span className="text-[10px] text-slate-500 font-medium uppercase ml-1">ex. GST</span>
                         </span>
                       </div>
@@ -247,7 +247,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
                         className={`w-full font-semibold uppercase tracking-wider text-xs py-3 px-4 border transition flex items-center justify-center gap-1.5 rounded-lg shadow-sm ${
                           justAdded 
                             ? "bg-emerald-600 border-emerald-600 text-white" 
-                            : "bg-blue-600 border-blue-600 text-white hover:bg-blue-700"
+                            : "bg-amber-400 border-amber-400 text-slate-950 hover:bg-amber-500 font-bold"
                         }`}
                       >
                         {justAdded ? (
@@ -308,7 +308,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
                   </div>
                   <div className="bg-white p-2.5 border border-slate-200 rounded-lg text-slate-700">
                     <span className="text-[9px] text-slate-500 uppercase font-semibold block mb-0.5">Total Cost:</span>
-                    <span className="text-blue-600 font-bold">${estimateInfo.total.toFixed(2)}</span>
+                    <span className="text-slate-900 font-bold">${estimateInfo.total.toFixed(2)}</span>
                   </div>
                 </div>
               </div>

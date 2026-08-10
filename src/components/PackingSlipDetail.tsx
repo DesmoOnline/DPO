@@ -30,7 +30,12 @@ export const PackingSlipDetail: React.FC<PackingSlipDetailProps> = ({ orderId, o
     );
   }
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => {
+    const pdf = generatePackingSlipPDF(order);
+    pdf.autoPrint();
+    const blobUrl = pdf.output("bloburl");
+    window.open(blobUrl, "_blank");
+  };
 
   const handleDownloadPDF = () => {
     const pdf = generatePackingSlipPDF(order);

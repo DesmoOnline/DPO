@@ -27,6 +27,14 @@ function AppContent() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [selectedPackingSlipId, setSelectedPackingSlipId] = useState<string | null>(null);
+
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    if (tab === "orders") {
+      setSelectedInvoiceId(null);
+      setSelectedPackingSlipId(null);
+    }
+  };
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
   const [isQuickOrderOpen, setIsQuickOrderOpen] = useState(false);
@@ -102,6 +110,7 @@ function AppContent() {
           orderId={selectedInvoiceId}
           onBack={() => setSelectedInvoiceId(null)}
           onViewPackingSlip={handleOpenPackingSlip}
+          onViewInvoice={handleOpenInvoice}
         />
       );
     }
@@ -163,8 +172,8 @@ function AppContent() {
       <div className="space-y-0">
         <Header 
           activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
-          onOpenProductDetail={setSelectedProductId}
+          setActiveTab={handleTabChange} 
+          onOpenProductDetail={handleOpenProductDetail} 
           searchQuery={ledgerSearchQuery}
           onSearchQueryChange={setLedgerSearchQuery}
           onSearchSubmit={handleSearchSubmit}
@@ -203,17 +212,17 @@ function AppContent() {
         />
       )}
 
-      <footer className="bg-slate-900 text-slate-300 py-8 px-6 text-xs font-mono border-t-4 border-blue-600" id="app_footer">
+      <footer className="bg-slate-900 text-slate-300 py-8 px-6 text-xs font-mono border-t-4 border-amber-400" id="app_footer">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="bg-blue-600 text-white p-1.5 rounded-lg">
+            <div className="bg-amber-400 text-slate-950 p-1.5 rounded-lg">
               <Wrench className="w-4 h-4 font-black" />
             </div>
             <span className="font-bold uppercase tracking-wider">© 2026 Desmo Products Pty Ltd • ALL RIGHTS RESERVED • WORLD-CLASS B2B PORTAL v3.0</span>
           </div>
 
           <div className="flex gap-4 font-bold uppercase tracking-wider">
-            <a href="mailto:lew@desmoproducts.com.au" className="text-blue-400 hover:underline transition">Contact Lew (HQ)</a>
+            <a href="mailto:lew@desmoproducts.com.au" className="text-amber-400 hover:underline transition">Contact Lew (HQ)</a>
             <span>•</span>
             <span className="text-slate-400">10% AUSTRALIAN GST INCLUDED</span>
           </div>

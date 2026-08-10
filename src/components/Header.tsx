@@ -135,14 +135,11 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
         {/* Brand */}
         <div className="flex items-center gap-4 cursor-pointer" onClick={() => { setActiveTab("catalog"); onOpenProductDetail(null); }}>
-          <div>
-            <h1 className="text-2xl font-black tracking-tight leading-none text-blue-600 dark:text-blue-500">
-              Desmo <span className="text-slate-900 dark:text-white">Products</span>
-            </h1>
-            <p className="text-[9px] font-bold text-slate-400 mt-1 tracking-[0.25em] uppercase font-mono">
-              ELECTRICAL TESTING EQUIPMENT
-            </p>
-          </div>
+          <img 
+            src="https://desmoproducts.com.au/wp-content/uploads/2021/04/logo.png" 
+            alt="Desmo Products - Electrical Testing Equipment" 
+            className="h-10 sm:h-12 w-auto object-contain"
+          />
         </div>
 
         {/* Navigation Tabs */}
@@ -153,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => { setActiveTab("catalog"); onOpenProductDetail(null); }}
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
                 activeTab === "catalog"
-                  ? "bg-blue-600 text-white shadow"
+                  ? "bg-amber-400 text-slate-950 shadow-sm font-extrabold"
                   : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700"
               }`}
             >
@@ -167,7 +164,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => { setActiveTab("cart"); onOpenProductDetail(null); }}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all relative ${
                   activeTab === "cart"
-                    ? "bg-blue-600 text-white shadow"
+                    ? "bg-amber-400 text-slate-950 shadow-sm font-extrabold"
                     : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700"
                 }`}
               >
@@ -186,7 +183,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => { setActiveTab("orders"); onOpenProductDetail(null); }}
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
                 activeTab === "orders"
-                  ? "bg-blue-600 text-white shadow"
+                  ? "bg-amber-400 text-slate-950 shadow-sm font-extrabold"
                   : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700"
               }`}
             >
@@ -200,7 +197,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => { setActiveTab("warranties"); onOpenProductDetail(null); }}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
                   activeTab === "warranties"
-                    ? "bg-blue-600 text-white shadow"
+                    ? "bg-amber-400 text-slate-950 shadow-sm font-extrabold"
                     : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700"
                 }`}
               >
@@ -215,7 +212,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => { setActiveTab("admin"); onOpenProductDetail(null); }}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
                   activeTab === "admin"
-                    ? "bg-blue-600 text-white shadow"
+                    ? "bg-amber-400 text-slate-950 shadow-sm font-extrabold"
                     : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700"
                 }`}
               >

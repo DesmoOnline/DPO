@@ -153,6 +153,7 @@ export interface CompanySettings {
   orderPendingMessage: string;
   shippingBaseRate?: number;
   shippingPerKgRate?: number;
+  shippingMinPrice?: number;
 }
 
 export interface GSTReportData {

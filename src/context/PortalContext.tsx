@@ -779,6 +779,13 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const localWarranties = localStorage.getItem("dp_sandbox_warranties");
     if (localWarranties) setWarranties(JSON.parse(localWarranties));
 
+    const localSettings = localStorage.getItem("dp_sandbox_company_settings");
+    if (localSettings) {
+      setCompanySettings(JSON.parse(localSettings));
+    } else {
+      localStorage.setItem("dp_sandbox_company_settings", JSON.stringify(DEFAULT_COMPANY_SETTINGS));
+    }
+
     if (localUser) {
       setCurrentUser(JSON.parse(localUser));
     } else {
@@ -910,12 +917,20 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }, () => {});
     }
 
+    // Real-time listen to company settings
+    const unsubSettings = onSnapshot(doc(db, "settings", "company"), (docSnap) => {
+      if (docSnap.exists()) {
+        setCompanySettings(docSnap.data() as CompanySettings);
+      }
+    }, () => { /* silent fail */ });
+
     return () => {
       unsubProducts();
       unsubCustomers();
       unsubOrders();
       unsubTiers();
       unsubWarranties();
+      unsubSettings();
     };
   }, [isFirebase, currentUser?.id, isAdmin]);
 
@@ -1213,7 +1228,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       totalWeightKg,
       totalCubicMeters,
       shippingBaseRate: companySettings.shippingBaseRate,
-      shippingPerKgRate: companySettings.shippingPerKgRate
+      shippingPerKgRate: companySettings.shippingPerKgRate,
+      shippingMinPrice: companySettings.shippingMinPrice
     });
 
     const estimatedShippingTotal = cart.reduce((acc, item) => acc + ((item.product.estimatedShippingCost || 0) * item.qty), 0);
@@ -1226,7 +1242,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const allAutoApproved = cart.every(item => item.product.autoApprove === true);
     let initialStatus: Order["status"] = allAutoApproved ? "approved" : "pending_approval";
     if (documentMode === "QUOTE") {
-      initialStatus = activeFreightCharge > 0 ? "quote_finalized" : "quote_requested";
+      initialStatus = (isAdmin && activeFreightCharge > 0) ? "quote_finalized" : "quote_requested";
     } else if (!ownTransport) {
       initialStatus = "pending_approval";
     }
@@ -1638,7 +1654,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       currentUser &&
       orderToApprove.customerId === currentUser.id &&
       orderToApprove.documentType === "QUOTE" &&
-      orderToApprove.status === "quote_finalized"
+      (orderToApprove.status === "quote_finalized" || orderToApprove.status === "quote_requested")
     );
     if (!canApprove && isFirebase) return;
 
@@ -1647,7 +1663,6 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let finalOrderId = orderId;
 
     if (isConvertingQuote) {
-      updates.quoteMessage = undefined;
       updates.documentType = "INVOICE";
       if (orderId.startsWith("QTE-")) {
         finalOrderId = orderId.replace("QTE-", "INV-");
@@ -1660,6 +1675,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (finalOrderId !== orderId) {
           // Create new document with INV id and delete old QTE document
           const newOrderData = { ...orderToApprove, ...updates, id: finalOrderId };
+          delete newOrderData.quoteMessage;
           await setDoc(doc(db, "orders", finalOrderId), newOrderData);
           await deleteDoc(doc(db, "orders", orderId));
         } else {
@@ -1731,7 +1747,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       currentUser &&
       orderToDecline.customerId === currentUser.id &&
       orderToDecline.documentType === "QUOTE" &&
-      orderToDecline.status === "quote_finalized"
+      (orderToDecline.status === "quote_finalized" || orderToDecline.status === "quote_requested")
     );
     if (!canDecline && isFirebase) return;
     const updates: Partial<Order> = { status: "declined" };
@@ -1781,7 +1797,6 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       gstAmount: newGst,
       totalAmount: newTotal,
       status: orderToUpdate.documentType === "QUOTE" ? "quote_finalized" : orderToUpdate.status,
-      quoteMessage: undefined,
       shippingReviewRequested: false
     };
 
