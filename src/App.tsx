@@ -28,6 +28,10 @@ function AppContent() {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [selectedPackingSlipId, setSelectedPackingSlipId] = useState<string | null>(null);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [activeTab, selectedProductId, selectedInvoiceId, selectedPackingSlipId]);
+
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     if (tab === "orders") {
@@ -145,7 +149,7 @@ function AppContent() {
         );
       case "admin":
         if (isAdmin) {
-          return <AdminDashboard />;
+          return <AdminDashboard onViewInvoice={handleOpenInvoice} />;
         }
         return (
           <div className="bg-slate-950 border border-slate-900 rounded-xl p-8 text-center" id="app_admin_fallback">

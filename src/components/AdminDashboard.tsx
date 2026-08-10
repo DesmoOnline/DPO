@@ -30,7 +30,11 @@ import { Customer360View } from "./Customer360View";
 import { WarrantyAdminPanel } from "./WarrantyAdminPanel";
 import { Warranty } from "../types";
 
-export const AdminDashboard: React.FC = () => {
+interface AdminDashboardProps {
+  onViewInvoice?: (orderId: string) => void;
+}
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice }) => {
   const { showToast } = useToast();
   const { 
     customers, 
@@ -163,6 +167,19 @@ export const AdminDashboard: React.FC = () => {
   // Feedback states
   const [pricingInputValues, setPricingInputValues] = useState<{ [customerId_productId: string]: string }>({});
   const [basCopied, setBasCopied] = useState(false);
+
+  // CRM History Pagination State
+  const [historyPage, setHistoryPage] = useState(1);
+
+  // Reset page when customer selection changes
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [selectedCustomerId]);
+
+  // Scroll to top on tab or customer selection changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [activeSubTab, selectedCustomerId]);
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
   const invoiceToDelete = orders.find(order => order.id.toLowerCase() === deleteInvoiceRef.trim().toLowerCase());
@@ -1465,19 +1482,30 @@ export const AdminDashboard: React.FC = () => {
                     </p>
 
                     <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-                      {orders
-                        .filter(o => o.customerId === selectedCustomer.id)
-                        .length === 0 ? (
-                          <div className="text-center text-slate-400 py-6 text-xs uppercase tracking-wider font-mono">
-                            No transaction history recorded
-                          </div>
-                        ) : (
-                          orders
-                            .filter(o => o.customerId === selectedCustomer.id)
-                            .map((order) => {
+                      {(() => {
+                        const customerOrders = orders.filter(o => o.customerId === selectedCustomer.id);
+                        if (customerOrders.length === 0) {
+                          return (
+                            <div className="text-center text-slate-400 py-6 text-xs uppercase tracking-wider font-mono">
+                              No transaction history recorded
+                            </div>
+                          );
+                        }
+
+                        const itemsPerPage = 5;
+                        const totalPages = Math.ceil(customerOrders.length / itemsPerPage);
+                        const paginatedOrders = customerOrders.slice((historyPage - 1) * itemsPerPage, historyPage * itemsPerPage);
+
+                        return (
+                          <>
+                            {paginatedOrders.map((order) => {
                               const isQuote = order.documentType === "QUOTE";
                               return (
-                                <div key={order.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex items-center justify-between gap-4 text-xs font-mono">
+                                <div
+                                  key={order.id}
+                                  onClick={() => onViewInvoice && onViewInvoice(order.id)}
+                                  className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex items-center justify-between gap-4 text-xs font-mono cursor-pointer hover:border-blue-400 transition"
+                                >
                                   <div className="space-y-1">
                                     <div className="flex items-center gap-2">
                                       <span className="font-bold text-slate-900">{order.id}</span>
@@ -1500,7 +1528,9 @@ export const AdminDashboard: React.FC = () => {
                                     <span className="font-bold text-slate-900">${order.totalAmount.toFixed(2)} AUD</span>
                                     {isQuote && (
                                       <button
-                                        onClick={async () => {
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
                                           if (confirm(`Are you sure you want to replicate quote ${order.id} for quick reordering?`)) {
                                             try {
                                               const newId = await replicateOrder(order.id);
@@ -1519,8 +1549,35 @@ export const AdminDashboard: React.FC = () => {
                                   </div>
                                 </div>
                               );
-                            })
-                        )}
+                            })}
+
+                            {/* Pagination Controls */}
+                            {totalPages > 1 && (
+                              <div className="flex justify-between items-center pt-4 border-t border-slate-100 font-sans text-xs">
+                                <button
+                                  type="button"
+                                  disabled={historyPage === 1}
+                                  onClick={() => setHistoryPage(prev => Math.max(prev - 1, 1))}
+                                  className="px-3 py-1.5 border border-slate-200 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition disabled:opacity-50 font-bold uppercase tracking-wider text-[10px]"
+                                >
+                                  Previous
+                                </button>
+                                <span className="text-slate-500 font-medium font-mono">
+                                  Page {historyPage} of {totalPages}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={historyPage === totalPages}
+                                  onClick={() => setHistoryPage(prev => Math.min(prev + 1, totalPages))}
+                                  className="px-3 py-1.5 border border-slate-200 bg-white text-slate-700 rounded-lg hover:bg-slate-50 transition disabled:opacity-50 font-bold uppercase tracking-wider text-[10px]"
+                                >
+                                  Next
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
