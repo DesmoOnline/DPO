@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { Product, CustomerProfile, Order, OrderItem, QuantityBreak, CompanySettings, PricingTier, DocumentType, Customer360, Warranty } from "../types";
-import { isFirebaseAvailable, db, auth } from "../firebase";
+import { isFirebaseAvailable, db, auth, firebaseConfig } from "../firebase";
+import { initializeApp, deleteApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
 import { 
   collection, 
   doc, 
@@ -89,6 +91,8 @@ interface PortalContextType {
   // Admin actions
   approveCustomer: (customerId: string) => Promise<void>;
   rejectCustomer: (customerId: string) => Promise<void>;
+  createCustomerProfile: (email: string, password: string, companyName: string, deliveryAddress: string) => Promise<void>;
+  deleteCustomerProfile: (customerId: string) => Promise<void>;
   updateCustomerPricing: (customerId: string, productId: string, price: number) => Promise<void>;
   removeCustomerPricing: (customerId: string, productId: string) => Promise<void>;
   updateProductRateBreakAlignment: (customerId: string, productId: string, rateBreakId: string | null) => Promise<void>;
@@ -1401,6 +1405,68 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const createCustomerProfile = async (email: string, password: string, companyName: string, deliveryAddress: string) => {
+    if (!isAdmin && isFirebase) return;
+
+    const formattedEmail = email.trim().toLowerCase();
+
+    if (isFirebase && isFirebaseAvailable) {
+      // Create a temporary secondary Firebase app instance to avoid logging out the admin
+      const tempAppName = `temp-auth-creator-${Date.now()}`;
+      const tempApp = initializeApp(firebaseConfig, tempAppName);
+      const tempAuth = getAuth(tempApp);
+      try {
+        const userCreds = await createUserWithEmailAndPassword(tempAuth, formattedEmail, password);
+        const uid = userCreds.user.uid;
+        const newProfile: Omit<CustomerProfile, "id"> = {
+          email: formattedEmail,
+          companyName,
+          status: "approved",
+          createdAt: new Date().toISOString(),
+          approvedAt: new Date().toISOString(),
+          customPricing: {},
+          allowedProducts: [],
+          deliveryAddresses: [deliveryAddress]
+        };
+        await setDoc(doc(db, "users", uid), newProfile);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, "users");
+        throw error;
+      } finally {
+        await deleteApp(tempApp).catch(console.error);
+      }
+    } else {
+      const newId = `cust-${Math.random().toString(36).substr(2, 9)}`;
+      const profile: CustomerProfile = {
+        id: newId,
+        email: formattedEmail,
+        companyName,
+        status: "approved",
+        createdAt: new Date().toISOString(),
+        approvedAt: new Date().toISOString(),
+        customPricing: {},
+        allowedProducts: [],
+        deliveryAddresses: [deliveryAddress]
+      };
+      setCustomers(prev => [...prev, profile]);
+    }
+  };
+
+  const deleteCustomerProfile = async (customerId: string) => {
+    if (!isAdmin && isFirebase) return;
+
+    if (isFirebase && isFirebaseAvailable) {
+      try {
+        await deleteDoc(doc(db, "users", customerId));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `users/${customerId}`);
+        throw error;
+      }
+    } else {
+      setCustomers(prev => prev.filter(c => c.id !== customerId));
+    }
+  };
+
   const updateCustomerPricing = async (customerId: string, productId: string, price: number) => {
     if (!isAdmin && isFirebase) return;
 
@@ -2030,6 +2096,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         editOrder,
         approveCustomer,
         rejectCustomer,
+        createCustomerProfile,
+        deleteCustomerProfile,
         updateCustomerPricing,
         removeCustomerPricing,
         updateProductRateBreakAlignment,

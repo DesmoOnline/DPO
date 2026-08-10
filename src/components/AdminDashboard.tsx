@@ -52,7 +52,9 @@ export const AdminDashboard: React.FC = () => {
     updateOrderDispatch,
     deleteOrder,
     companySettings,
-    updateCompanySettings
+    updateCompanySettings,
+    createCustomerProfile,
+    deleteCustomerProfile
   } = usePortal();
 
   const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products" | "company" | "shipping" | "quotes" | "rateBreaks" | "warranties">("accounting");
@@ -145,6 +147,15 @@ export const AdminDashboard: React.FC = () => {
   const [deleteInvoiceRef, setDeleteInvoiceRef] = useState("");
   const [deleteInvoiceConfirm, setDeleteInvoiceConfirm] = useState("");
   const [deleteInvoiceSubmitting, setDeleteInvoiceSubmitting] = useState(false);
+
+  // Add Customer modal states
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [addCustomerEmail, setAddCustomerEmail] = useState("");
+  const [addCustomerPassword, setAddCustomerPassword] = useState("");
+  const [addCustomerCompany, setAddCustomerCompany] = useState("");
+  const [addCustomerAddress, setAddCustomerAddress] = useState("");
+  const [isAddingCustomer, setIsAddingCustomer] = useState(false);
+  const [addCustomerError, setAddCustomerError] = useState<string | null>(null);
 
   // Feedback states
   const [pricingInputValues, setPricingInputValues] = useState<{ [customerId_productId: string]: string }>({});
@@ -1282,9 +1293,24 @@ export const AdminDashboard: React.FC = () => {
           
           {/* Left Column: Customers List */}
           <div className="lg:col-span-1 bg-white border border-slate-200 rounded-xl p-6 space-y-4 h-fit shadow-sm">
-            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-4">
-              Wholesale Clients Ledger
-            </h3>
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                Wholesale Clients Ledger
+              </h3>
+              <button
+                onClick={() => {
+                  setAddCustomerEmail("");
+                  setAddCustomerPassword("");
+                  setAddCustomerCompany("");
+                  setAddCustomerAddress("");
+                  setAddCustomerError(null);
+                  setShowAddCustomerModal(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold uppercase tracking-wider text-[10px] py-1.5 px-3 rounded shadow-sm transition flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add
+              </button>
+            </div>
 
             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
               {customers
@@ -1367,6 +1393,20 @@ export const AdminDashboard: React.FC = () => {
                           Reject / Deny
                         </button>
                       )}
+
+                      <button
+                        id="crm_delete_btn"
+                        onClick={async () => {
+                          if (confirm(`Are you sure you want to permanently delete this customer's profile? This action cannot be undone.`)) {
+                            await deleteCustomerProfile(selectedCustomer.id);
+                            setSelectedCustomerId(null);
+                          }
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white font-semibold uppercase tracking-wider text-[10px] py-2 px-4 rounded-lg shadow-sm transition flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete Customer
+                      </button>
                     </div>
                   </div>
 
@@ -2594,6 +2634,121 @@ export const AdminDashboard: React.FC = () => {
           </div>
           
           <WarrantyAdminPanel />
+        </div>
+      )}
+      {/* Add Customer Modal */}
+      {showAddCustomerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-md overflow-hidden transform transition-all">
+            <div className="bg-slate-50 border-b border-slate-100 p-6 flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 uppercase tracking-wider font-mono">Create Client Profile</h3>
+                <p className="text-[10px] text-slate-500 uppercase mt-0.5">Pre-approve and authorize a new wholesale partner</p>
+              </div>
+              <button
+                onClick={() => setShowAddCustomerModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!addCustomerEmail.trim() || !addCustomerPassword.trim() || !addCustomerCompany.trim()) {
+                  setAddCustomerError("Email, password, and company name are required.");
+                  return;
+                }
+                setIsAddingCustomer(true);
+                setAddCustomerError(null);
+                try {
+                  await createCustomerProfile(
+                    addCustomerEmail,
+                    addCustomerPassword,
+                    addCustomerCompany,
+                    addCustomerAddress
+                  );
+                  setShowAddCustomerModal(false);
+                } catch (err: any) {
+                  setAddCustomerError(err?.message || "Failed to create customer profile.");
+                } finally {
+                  setIsAddingCustomer(false);
+                }
+              }}
+              className="p-6 space-y-4"
+            >
+              {addCustomerError && (
+                <div className="bg-red-50 border border-red-200 text-red-750 p-3 rounded-lg text-xs font-mono font-medium">
+                  {addCustomerError}
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold block">Company Name</label>
+                <input
+                  type="text"
+                  required
+                  value={addCustomerCompany}
+                  onChange={(e) => setAddCustomerCompany(e.target.value)}
+                  placeholder="e.g. Desmo Retailers Ltd"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold block">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={addCustomerEmail}
+                  onChange={(e) => setAddCustomerEmail(e.target.value)}
+                  placeholder="e.g. dealer@company.com"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold block">Password</label>
+                <input
+                  type="password"
+                  required
+                  value={addCustomerPassword}
+                  onChange={(e) => setAddCustomerPassword(e.target.value)}
+                  placeholder="Minimum 6 characters"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold block">Delivery Address</label>
+                <textarea
+                  value={addCustomerAddress}
+                  onChange={(e) => setAddCustomerAddress(e.target.value)}
+                  placeholder="Physical dispatch address"
+                  rows={2}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(false)}
+                  className="px-4 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold uppercase tracking-wider transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAddingCustomer}
+                  className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold uppercase tracking-wider transition disabled:opacity-50"
+                >
+                  {isAddingCustomer ? "Creating..." : "Create Profile"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
