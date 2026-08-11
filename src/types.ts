@@ -157,6 +157,9 @@ export interface CompanySettings {
   shippingBaseRate?: number;
   shippingPerKgRate?: number;
   shippingMinPrice?: number;
+  gmailUser?: string;
+  gmailAppPassword?: string;
+  emailSenderName?: string;
 }
 
 export interface GSTReportData {

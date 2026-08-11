@@ -23,7 +23,12 @@ import {
   Wifi,
   WifiOff,
   AlertTriangle,
-  PackageCheck
+  PackageCheck,
+  Mail,
+  Send,
+  Key,
+  Lock,
+  Megaphone
 } from "lucide-react";
 import RateBreakProfileManager from "./RateBreakProfileManager";
 import { Customer360View } from "./Customer360View";
@@ -43,6 +48,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
     isOnline,
     approveCustomer, 
     rejectCustomer, 
+    updateCustomerRole,
     updateCustomerPricing, 
     removeCustomerPricing, 
     updateProductRateBreakAlignment,
@@ -61,10 +67,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
     updateCompanySettings,
     createCustomerProfile,
     deleteCustomerProfile,
-    replicateOrder
+    replicateOrder,
+    sendCustomerWelcomeEmail,
+    sendCustomerBroadcastEmail,
+    sendPasswordResetLink
   } = usePortal();
 
   const [activeSubTab, setActiveSubTab] = useState<"accounting" | "customers" | "products" | "company" | "shipping" | "quotes" | "rateBreaks" | "warranties">("accounting");
+
+  // Email & Broadcast State
+  const [isSendingWelcomeEmail, setIsSendingWelcomeEmail] = useState(false);
+  const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
+  const [broadcastSubject, setBroadcastSubject] = useState("");
+  const [broadcastBody, setBroadcastBody] = useState("");
+  const [broadcastDealTitle, setBroadcastDealTitle] = useState("");
+  const [selectedBroadcastRecipients, setSelectedBroadcastRecipients] = useState<string[]>([]);
+  const [isSendingBroadcast, setIsSendingBroadcast] = useState(false);
 
   useEffect(() => {
     const handleOpenQuotes = () => setActiveSubTab("quotes");
@@ -662,6 +680,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
 
   return (
     <div className="space-y-8" id="admin_dashboard_container">
+      {/* Segment Selector tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto max-w-full py-1 border-b border-slate-100 pb-4" id="admin_tab_selector">
+        {(["accounting", "company", "shipping", "customers", "products", "quotes", "rateBreaks", "warranties"] as const).map((tab) => {
+          const label = tab === "accounting" 
+            ? "Bookkeeping & GST" 
+            : tab === "company"
+              ? "Company Details"
+              : tab === "shipping"
+                ? "Shipping & Freight"
+                : tab === "customers" 
+                  ? `Customers (${customers.filter(c => !["lew@desmoproducts.com.au", "1@1.com"].includes(c.email)).length})` 
+                  : tab === "products"
+                    ? "Products"
+                    : tab === "quotes"
+                      ? `Quotes (${orders.filter(o => o.documentType === "QUOTE").length})`
+                      : tab === "warranties" ? "Warranties" : "Rate Break Profiles";
+          const icon = tab === "accounting" 
+            ? <TrendingUp className="w-4 h-4" /> 
+            : tab === "company"
+              ? <Building className="w-4 h-4" />
+              : tab === "shipping"
+                ? <Truck className="w-4 h-4" />
+                : tab === "customers" 
+                  ? <Users className="w-4 h-4" /> 
+                  : tab === "products"
+                    ? <Wrench className="w-4 h-4" />
+                    : tab === "quotes"
+                      ? <FileText className="w-4 h-4" />
+                      : tab === "warranties" ? <Shield className="w-4 h-4" /> : <DollarSign className="w-4 h-4" />;
+          return (
+            <button
+              key={tab}
+              id={`admin_tab_${tab}`}
+              onClick={() => { setActiveSubTab(tab); if (tab !== "customers") setSelectedCustomerId(null); }}
+              className={`flex items-center gap-2 px-4 py-2.5 border text-xs font-semibold rounded-lg transition whitespace-nowrap ${
+                activeSubTab === tab
+                  ? "bg-amber-400 border-blue-600 text-white shadow-sm"
+                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {icon}
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Top Banner */}
       <div className="bg-white border border-slate-200 p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm rounded-xl" id="admin_dashboard_header">
         <div className="space-y-2">
@@ -751,53 +816,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
           </div>
         );
       })()}
-
-      {/* Segment Selector tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto max-w-full py-1 border-b border-slate-100 pb-4" id="admin_tab_selector">
-        {(["accounting", "company", "shipping", "customers", "products", "quotes", "rateBreaks", "warranties"] as const).map((tab) => {
-          const label = tab === "accounting" 
-            ? "Bookkeeping & GST" 
-            : tab === "company"
-              ? "Company Details"
-              : tab === "shipping"
-                ? "Shipping & Freight"
-                : tab === "customers" 
-                  ? `Customers (${customers.filter(c => !["lew@desmoproducts.com.au", "1@1.com"].includes(c.email)).length})` 
-                  : tab === "products"
-                    ? "Products"
-                    : tab === "quotes"
-                      ? `Quotes (${orders.filter(o => o.documentType === "QUOTE").length})`
-                      : tab === "warranties" ? "Warranties" : "Rate Break Profiles";
-          const icon = tab === "accounting" 
-            ? <TrendingUp className="w-4 h-4" /> 
-            : tab === "company"
-              ? <Building className="w-4 h-4" />
-              : tab === "shipping"
-                ? <Truck className="w-4 h-4" />
-                : tab === "customers" 
-                  ? <Users className="w-4 h-4" /> 
-                  : tab === "products"
-                    ? <Wrench className="w-4 h-4" />
-                    : tab === "quotes"
-                      ? <FileText className="w-4 h-4" />
-                      : tab === "warranties" ? <Shield className="w-4 h-4" /> : <DollarSign className="w-4 h-4" />;
-          return (
-            <button
-              key={tab}
-              id={`admin_tab_${tab}`}
-              onClick={() => { setActiveSubTab(tab); if (tab !== "customers") setSelectedCustomerId(null); }}
-              className={`flex items-center gap-2 px-4 py-2.5 border text-xs font-semibold rounded-lg transition whitespace-nowrap ${
-                activeSubTab === tab
-                  ? "bg-amber-400 border-blue-600 text-white shadow-sm"
-                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              {icon}
-              {label}
-            </button>
-          );
-        })}
-      </div>
 
       {/* Tab Content 1: Bookkeeping & GST */}
       {activeSubTab === "accounting" && (
@@ -1302,6 +1320,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                 />
                 <p className="text-[10px] text-slate-400">This message is displayed to customers immediately after they submit a new wholesale order.</p>
               </div>
+
+              <h4 className="text-sm font-bold text-slate-800 uppercase font-mono mb-4 text-blue-600 pt-4 border-t border-slate-100 flex items-center gap-1.5">
+                <Mail className="w-4 h-4 text-blue-600" />
+                Google Business Email & SMTP Configuration
+              </h4>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-600 uppercase font-bold flex items-center gap-1">
+                    <Mail className="w-3 h-3 text-slate-400" /> Business Email Address (Google Workspace)
+                  </label>
+                  <input
+                    type="email"
+                    value={csForm.gmailUser || ""}
+                    onChange={(e) => setCsForm(prev => ({ ...prev, gmailUser: e.target.value }))}
+                    placeholder="e.g. orders@desmoproducts.com.au"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-600 uppercase font-bold flex items-center gap-1">
+                    <Key className="w-3 h-3 text-slate-400" /> Google App Password (16 Characters)
+                  </label>
+                  <input
+                    type="password"
+                    value={csForm.gmailAppPassword || ""}
+                    onChange={(e) => setCsForm(prev => ({ ...prev, gmailAppPassword: e.target.value }))}
+                    placeholder="•••• •••• •••• ••••"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-mono tracking-widest focus:border-blue-500 outline-none"
+                  />
+                  <p className="text-[10px] text-slate-500 leading-normal">
+                    Generated under Google Account &rarr; Security &rarr; 2-Step Verification &rarr; App Passwords. Allows sending invoices, welcome emails, and special offers securely via Google's servers.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-600 uppercase font-bold">
+                    Email Sender Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={csForm.emailSenderName || ""}
+                    onChange={(e) => setCsForm(prev => ({ ...prev, emailSenderName: e.target.value }))}
+                    placeholder="e.g. Desmo Products Wholesale"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1317,19 +1383,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
                 Wholesale Clients Ledger
               </h3>
-              <button
-                onClick={() => {
-                  setAddCustomerEmail("");
-                  setAddCustomerPassword("");
-                  setAddCustomerCompany("");
-                  setAddCustomerAddress("");
-                  setAddCustomerError(null);
-                  setShowAddCustomerModal(true);
-                }}
-                className="bg-amber-400 hover:bg-amber-500 text-slate-900 font-semibold uppercase tracking-wider text-[10px] py-1.5 px-3 rounded shadow-sm transition flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    const approvedEmails = customers.filter(c => c.status === "approved" && !["lew@desmoproducts.com.au", "1@1.com"].includes(c.email)).map(c => c.email);
+                    setSelectedBroadcastRecipients(approvedEmails);
+                    setBroadcastSubject("");
+                    setBroadcastBody("");
+                    setBroadcastDealTitle("");
+                    setIsBroadcastModalOpen(true);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold uppercase tracking-wider text-[10px] py-1.5 px-3 rounded shadow-sm transition flex items-center gap-1"
+                  title="Send deals & special offer broadcast email to customers"
+                >
+                  <Megaphone className="w-3.5 h-3.5" /> Broadcast Deals
+                </button>
+                <button
+                  onClick={() => {
+                    setAddCustomerEmail("");
+                    setAddCustomerPassword("");
+                    setAddCustomerCompany("");
+                    setAddCustomerAddress("");
+                    setAddCustomerError(null);
+                    setShowAddCustomerModal(true);
+                  }}
+                  className="bg-amber-400 hover:bg-amber-500 text-slate-900 font-semibold uppercase tracking-wider text-[10px] py-1.5 px-3 rounded shadow-sm transition flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
@@ -1400,7 +1482,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                       </div>
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={async () => {
+                          setIsSendingWelcomeEmail(true);
+                          try {
+                            await sendCustomerWelcomeEmail(selectedCustomer.email, selectedCustomer.companyName);
+                            showToast("Email Sent", `Account setup & password reset email dispatched to ${selectedCustomer.email}`, "success");
+                          } catch (err: any) {
+                            showToast("Email Error", err.message || "Failed to send email", "error");
+                          } finally {
+                            setIsSendingWelcomeEmail(false);
+                          }
+                        }}
+                        disabled={isSendingWelcomeEmail}
+                        className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold uppercase tracking-wider text-[10px] py-2 px-4 rounded-lg shadow-sm flex items-center gap-1.5 transition"
+                        title="Send portal login details & password setup link via email"
+                      >
+                        <Mail className="w-4 h-4" />
+                        {isSendingWelcomeEmail ? "Sending..." : "Send Login & Password Reset Link"}
+                      </button>
+
                       {selectedCustomer.status !== "approved" && (
                         <button
                           id="crm_approve_btn"
@@ -2888,6 +2990,165 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                   className="px-4 py-2.5 rounded-lg bg-amber-400 hover:bg-amber-500 text-slate-900 text-xs font-semibold uppercase tracking-wider transition disabled:opacity-50"
                 >
                   {isAddingCustomer ? "Creating..." : "Create Profile"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Deals & Special Offers Email Broadcast Modal */}
+      {isBroadcastModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-100 text-amber-700 rounded-lg">
+                  <Megaphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">Broadcast Deals & Special Offers</h3>
+                  <p className="text-[11px] text-slate-500 font-mono">Send wholesale promotions via Google Business Email</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsBroadcastModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form 
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (selectedBroadcastRecipients.length === 0) {
+                  showToast("No Recipients", "Please select at least one customer recipient.", "error");
+                  return;
+                }
+                if (!broadcastSubject.trim() || !broadcastBody.trim()) {
+                  showToast("Missing Fields", "Subject line and email message body are required.", "error");
+                  return;
+                }
+
+                setIsSendingBroadcast(true);
+                try {
+                  const res = await sendCustomerBroadcastEmail(
+                    selectedBroadcastRecipients,
+                    broadcastSubject,
+                    broadcastBody,
+                    broadcastDealTitle
+                  );
+                  showToast("Broadcast Dispatched", `Successfully sent offer to ${res.sentCount} client(s).`, "success");
+                  setIsBroadcastModalOpen(false);
+                } catch (err: any) {
+                  showToast("Broadcast Failed", err.message || "Failed to send broadcast", "error");
+                } finally {
+                  setIsSendingBroadcast(false);
+                }
+              }} 
+              className="space-y-4"
+            >
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Special Offer Badge / Tag (Optional)</label>
+                <input
+                  type="text"
+                  value={broadcastDealTitle}
+                  onChange={(e) => setBroadcastDealTitle(e.target.value)}
+                  placeholder="e.g. Stock Clearance - 15% Off Multimeters"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Email Subject Line</label>
+                <input
+                  type="text"
+                  required
+                  value={broadcastSubject}
+                  onChange={(e) => setBroadcastSubject(e.target.value)}
+                  placeholder="e.g. Exclusive Wholesale Special: February Stock Update"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Message & Deal Details</label>
+                <textarea
+                  required
+                  rows={5}
+                  value={broadcastBody}
+                  onChange={(e) => setBroadcastBody(e.target.value)}
+                  placeholder="Describe your special offer or stock deal here. Customer will receive a formatted email with a direct login link to place their order."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium focus:border-blue-500 outline-none resize-y"
+                />
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-mono text-slate-600 uppercase font-bold">
+                    Select Target Recipients ({selectedBroadcastRecipients.length} selected)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allApproved = customers.filter(c => c.status === "approved" && !["lew@desmoproducts.com.au", "1@1.com"].includes(c.email)).map(c => c.email);
+                      if (selectedBroadcastRecipients.length === allApproved.length) {
+                        setSelectedBroadcastRecipients([]);
+                      } else {
+                        setSelectedBroadcastRecipients(allApproved);
+                      }
+                    }}
+                    className="text-[10px] text-blue-600 font-semibold uppercase hover:underline"
+                  >
+                    {selectedBroadcastRecipients.length === customers.filter(c => c.status === "approved" && !["lew@desmoproducts.com.au", "1@1.com"].includes(c.email)).length ? "Deselect All" : "Select All Approved"}
+                  </button>
+                </div>
+
+                <div className="max-h-36 overflow-y-auto space-y-1.5 border border-slate-200 rounded-lg p-3 bg-slate-50">
+                  {customers
+                    .filter(c => !["lew@desmoproducts.com.au", "1@1.com"].includes(c.email))
+                    .map(c => {
+                      const isChecked = selectedBroadcastRecipients.includes(c.email);
+                      return (
+                        <label key={c.id} className="flex items-center justify-between text-xs text-slate-700 cursor-pointer hover:bg-white p-1 rounded transition">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedBroadcastRecipients(prev => [...prev, c.email]);
+                                } else {
+                                  setSelectedBroadcastRecipients(prev => prev.filter(em => em !== c.email));
+                                }
+                              }}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="font-bold">{c.companyName}</span>
+                          </div>
+                          <span className="font-mono text-[10px] text-slate-400">{c.email}</span>
+                        </label>
+                      );
+                    })}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsBroadcastModalOpen(false)}
+                  className="px-4 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold uppercase tracking-wider transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingBroadcast || selectedBroadcastRecipients.length === 0}
+                  className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  <Send className="w-4 h-4" />
+                  {isSendingBroadcast ? "Sending Broadcast..." : `Send Email Broadcast (${selectedBroadcastRecipients.length})`}
                 </button>
               </div>
             </form>

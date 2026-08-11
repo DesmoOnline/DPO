@@ -17,7 +17,7 @@ import {
   onSnapshot,
   Timestamp
 } from "firebase/firestore";
-import { onAuthStateChanged, signOut, createUserWithEmailAndPassword } from "firebase/auth";
+import { onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { generateInvoicePDF } from "../utils/pdfGenerator";
 import { freightEngine } from "../services/freight/freightEngine";
 
@@ -114,9 +114,12 @@ interface PortalContextType {
   requestShippingReview: (orderId: string, notes?: string) => Promise<void>;
   replicateOrder: (orderId: string) => Promise<string>;
   
-  // Settings
+  // Settings & Email Capabilities
   companySettings: CompanySettings;
   updateCompanySettings: (settings: CompanySettings) => Promise<void>;
+  sendCustomerWelcomeEmail: (email: string, companyName: string) => Promise<void>;
+  sendCustomerBroadcastEmail: (recipients: string[], subject: string, body: string, dealTitle?: string) => Promise<{ sentCount: number; errors?: string[] }>;
+  sendPasswordResetLink: (email: string) => Promise<void>;
 
   // Pricing Tiers
   pricingTiers: PricingTier[];
@@ -159,7 +162,10 @@ const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
   accountName: "Desmo Products Wholesale",
   orderPendingMessage: "Thank you for your wholesale request. Your order reference has been logged. Shipping costs will be calculated and added to this Invoice within 24 hours. Once confirmed, you will receive an approved invoice with bank deposit instructions to settle your account.",
   shippingBaseRate: 20.00,
-  shippingPerKgRate: 1.20
+  shippingPerKgRate: 1.20,
+  gmailUser: "lew@desmoproducts.com.au",
+  gmailAppPassword: "",
+  emailSenderName: "Desmo Products Wholesale"
 };
 
 // Initial mock data to ensure the app is fully functional instantly
@@ -754,10 +760,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, []);
 
-  const adminEmails = ["lew@desmoproducts.com.au", "1@1.com"];
-  const adminUids = ["rysSGhbaj8O7CIuZp0KiQsDUF", "FNmQiIOF1tccb2D1z7qfz2Vybgn2"];
   const isActualAdmin = currentUser 
-    ? (currentUser.role === "admin" || currentUser.role === "staff" || adminEmails.includes(currentUser.email) || adminUids.includes(currentUser.id)) 
+    ? (currentUser.role === "admin" || currentUser.role === "staff") 
     : false;
   const isAdmin = isActualAdmin && adminViewMode === "admin";
 
@@ -1003,23 +1007,29 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const userDocRef = doc(db, "users", user.uid);
           const docSnap = await getDoc(userDocRef);
           
-          if (docSnap.exists()) {
-            setCurrentUser({ id: docSnap.id, ...docSnap.data() } as CustomerProfile);
-          } else if (user.email.toLowerCase() === "lew@desmoproducts.com.au" || user.email.toLowerCase() === "1@1.com") {
-            // Automatically create the admin profile if it doesn't exist yet, using their UID as the document ID
-            const adminProfile = {
-              email: user.email.toLowerCase(),
-              companyName: "Desmo Products HQ",
-              status: "approved",
-              createdAt: new Date().toISOString(),
-              customPricing: {},
-              allowedProducts: []
-            };
-            await setDoc(userDocRef, adminProfile);
-            setCurrentUser({ id: user.uid, ...adminProfile } as CustomerProfile);
-          } else {
-             setCurrentUser(null);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (user.email && (user.email.toLowerCase() === "lew@desmoproducts.com.au" || user.email.toLowerCase() === "1@1.com")) {
+            data.role = "admin";
+            data.status = "approved"; // Force approved status too just in case
           }
+          setCurrentUser({ id: docSnap.id, ...data } as CustomerProfile);
+        } else if (user.email.toLowerCase() === "lew@desmoproducts.com.au" || user.email.toLowerCase() === "1@1.com") {
+          // Automatically create the admin profile if it doesn't exist yet, using their UID as the document ID
+          const adminProfile = {
+            email: user.email.toLowerCase(),
+            companyName: "Desmo Products HQ",
+            status: "approved",
+            role: "admin",
+            createdAt: new Date().toISOString(),
+            customPricing: {},
+            allowedProducts: []
+          };
+          await setDoc(userDocRef, adminProfile);
+          setCurrentUser({ id: user.uid, ...adminProfile } as CustomerProfile);
+        } else {
+           setCurrentUser(null);
+        }
         } catch (error) {
           console.error("Failed to load user profile:", error);
         }
@@ -1132,7 +1142,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCart(newCart);
   };
 
-  // Place Order (Submit Invoice and Packing Slip)
+  // Place Order (Submit Invoice and Packing Slip via Server API)
   const placeOrder = async (
     notes?: string, 
     onBehalfOf?: { customerId: string; customerEmail: string; companyName: string; customPricing?: { [productId: string]: number } },
@@ -1141,199 +1151,38 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     documentMode: DocumentType = "INVOICE"
   ): Promise<Order> => {
     if (!currentUser) throw new Error("Authentication required to place orders");
-    // Admins can place on behalf of others; regular users must be approved
     if (!isActualAdmin && currentUser.status !== "approved") throw new Error("Your account must be approved to order");
     if (cart.length === 0) throw new Error("Your cart is empty");
 
-    // Determine the effective customer for this order
-    const effectiveCustomer = onBehalfOf || {
-      customerId: currentUser.id,
-      customerEmail: currentUser.email,
-      companyName: currentUser.companyName,
-      customPricing: currentUser.customPricing
-    };
+    const effectiveCustomerId = onBehalfOf ? onBehalfOf.customerId : currentUser.id;
 
-    // Map cart to OrderItems calculating custom prices and qty breaks
-    const orderItems: OrderItem[] = cart.map(item => {
-      const prod = item.product;
-      // 1. Get original price (custom overrides base wholesale)
-      const originalPrice = (effectiveCustomer.customPricing && effectiveCustomer.customPricing[prod.id] !== undefined)
-        ? effectiveCustomer.customPricing[prod.id]
-        : prod.baseWholesalePrice;
-      
-      let discountPercent = 0;
-      let finalPricePerUnit = originalPrice;
-      let applied = false;
-
-      // Priority 1: Product-Specific Rate Breaks (if assigned to this customer for this product)
-      const fullCustomer = customers.find(c => c.id === effectiveCustomer.customerId) || currentUser;
-      const alignmentId = fullCustomer.productRateBreakAlignments?.[prod.id];
-      const alignedRateBreak = prod.rateBreaks?.find(rb => rb.id === alignmentId);
-      
-      if (alignedRateBreak) {
-        const applicableBreak = [...alignedRateBreak.quantityBreaks]
-          .sort((a, b) => b.minQty - a.minQty)
-          .find(qb => item.qty >= qb.minQty);
-        if (applicableBreak) {
-          if (applicableBreak.discountType === "percentage") {
-            discountPercent = applicableBreak.discountValue;
-            finalPricePerUnit = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
-          } else {
-            finalPricePerUnit = Math.max(0, originalPrice - applicableBreak.discountValue);
-            discountPercent = Math.round(((originalPrice - finalPricePerUnit) / originalPrice) * 100);
-          }
-          applied = true;
-        }
-      }
-
-      // Priority 2: Product Quantity Breaks
-      if (!applied && prod.quantityBreaks && prod.quantityBreaks.length > 0) {
-        // Sort descending to find highest matched threshold
-        const matchedBreak = [...prod.quantityBreaks]
-          .sort((a,b) => b.minQty - a.minQty)
-          .find(qb => item.qty >= qb.minQty);
-        
-        if (matchedBreak) {
-          if (matchedBreak.discountType === "fixed") {
-            finalPricePerUnit = matchedBreak.discountValue;
-          } else if (matchedBreak.discountType === "percentage") {
-            discountPercent = matchedBreak.discountValue;
-            finalPricePerUnit = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
-          } else if (matchedBreak.discountPercent !== undefined) {
-            // Fallback for legacy breaks
-            discountPercent = matchedBreak.discountPercent;
-            finalPricePerUnit = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
-          }
-        }
-      }
-
-      const totalLineAmount = Number((finalPricePerUnit * item.qty).toFixed(2));
-
-      return {
-        productId: prod.id,
-        productName: prod.name,
-        sku: prod.sku,
+    const payload = {
+      customerId: effectiveCustomerId,
+      cartItems: cart.map(item => ({
+        productId: item.product.id,
         qty: item.qty,
-        originalPrice,
-        appliedDiscountPercent: discountPercent,
-        finalPricePerUnit,
-        totalLineAmount,
         ...(item.selectedColors && item.selectedColors.length > 0 ? { selectedColors: item.selectedColors } : {})
-      };
-    });
-
-    const totalWeightKg = cart.reduce((acc, item) => acc + ((item.product.weightKg || 0) * item.qty), 0);
-    const totalCubicMeters = cart.reduce((acc, item) => {
-      const l = (item.product.lengthCm || 0) / 100;
-      const w = (item.product.widthCm || 0) / 100;
-      const h = (item.product.heightCm || 0) / 100;
-      return acc + (l * w * h) * item.qty;
-    }, 0);
-
-    const subtotal = Number(orderItems.reduce((acc, item) => acc + item.totalLineAmount, 0).toFixed(2));
-    
-    const freightInfo = freightEngine.calculateFreight({
-      subtotal,
-      totalWeightKg,
-      totalCubicMeters,
-      shippingBaseRate: companySettings.shippingBaseRate,
-      shippingPerKgRate: companySettings.shippingPerKgRate,
-      shippingMinPrice: companySettings.shippingMinPrice
-    });
-
-    const estimatedShippingTotal = cart.reduce((acc, item) => acc + ((item.product.estimatedShippingCost || 0) * item.qty), 0);
-    const activeFreightCharge = ownTransport ? 0 : (estimatedShippingTotal > 0 ? estimatedShippingTotal : freightInfo.charge);
-    const gstAmount = Number(((subtotal + activeFreightCharge) * 0.10).toFixed(2)); // standard 10% GST in Australia
-    const totalAmount = Number((subtotal + activeFreightCharge + gstAmount).toFixed(2));
-
-    const nextInvoiceNumber = `${documentMode === "QUOTE" ? "QTE" : "INV"}-${Date.now().toString().slice(-5)}${Math.floor(10 + Math.random() * 90)}`;
-
-    const allAutoApproved = cart.every(item => item.product.autoApprove === true);
-    let initialStatus: Order["status"] = allAutoApproved ? "approved" : "pending_approval";
-    if (documentMode === "QUOTE") {
-      initialStatus = (isAdmin && activeFreightCharge > 0) ? "quote_finalized" : "quote_requested";
-    } else if (!ownTransport) {
-      initialStatus = "pending_approval";
-    }
-
-    const newOrder: Order = {
-      id: nextInvoiceNumber,
-      customerId: effectiveCustomer.customerId,
-      customerEmail: effectiveCustomer.customerEmail,
-      companyName: effectiveCustomer.companyName,
+      })),
       documentType: documentMode,
-      items: orderItems,
-      subtotal,
-      gstAmount,
-      totalAmount,
-      status: initialStatus,
-      createdAt: new Date().toISOString(),
-      shippingCharge: activeFreightCharge,
-      ...(notes ? { notes } : {}),
-      ...(documentMode === "QUOTE" ? { quoteMessage: activeFreightCharge > 0 ? "Quote includes estimated freight cost." : "This quote excludes shipping until finalized by Desmo Products." } : {}),
-      ...(ownTransport !== undefined ? { ownTransport } : {}),
-      ...(deliveryAddress ? { deliveryAddress } : {})
+      notes,
+      deliveryAddress,
+      ownTransport
     };
 
-    if (isFirebase && isFirebaseAvailable) {
-      try {
-        await setDoc(doc(db, "orders", nextInvoiceNumber), newOrder);
-        
-        // Deduct stock if auto-approved
-        if (initialStatus === "approved" && documentMode !== "QUOTE") {
-          for (const item of orderItems) {
-            const productRef = doc(db, "products", item.productId);
-            const productSnap = await getDoc(productRef);
-            if (productSnap.exists()) {
-              const currentStock = productSnap.data().stock || 0;
-              await updateDoc(productRef, { stock: Math.max(0, currentStock - item.qty) });
-            }
-          }
-        }
-      } catch (error) {
-        handleFirestoreError(error, OperationType.CREATE, `orders/${nextInvoiceNumber}`);
-      }
-    } else {
-      // Sandbox mode
-      setOrders(prev => [newOrder, ...prev]);
-      if (initialStatus === "approved" && documentMode !== "QUOTE") {
-        setProducts(prevProducts => prevProducts.map(p => {
-          const orderItem = orderItems.find(item => item.productId === p.id);
-          if (orderItem) {
-            const currentStock = p.stock || 0;
-            return { ...p, stock: Math.max(0, currentStock - orderItem.qty) };
-          }
-          return p;
-        }));
-      }
+    const res = await fetch('/api/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Checkout failed");
     }
 
-    if (initialStatus === "approved" && documentMode !== "QUOTE") {
-      try {
-        const pdf = generateInvoicePDF(newOrder, companySettings);
-        const dataUri = pdf.output("datauristring");
-        const pdfBase64 = dataUri.split(",")[1];
-        fetch("/api/send-invoice-email", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            to: newOrder.customerEmail,
-            subject: `Invoice from Desmo Products Online - ${newOrder.id}`,
-            body: `Dear customer,\n\nPlease find attached your tax invoice (${newOrder.id}) for your wholesale order with Desmo Products Online.\n\nTotal Amount: $${newOrder.totalAmount.toFixed(2)} AUD\n\nPlease settle payment within 14 days via bank deposit.\n\nThank you,\nDesmo Products HQ`,
-            pdfBase64,
-            filename: `invoice_${newOrder.id}.pdf`
-          }),
-        }).catch(err => console.error("Auto email invoice failed", err));
-      } catch (e) {
-        console.error("Auto invoice PDF generation failed", e);
-      }
-    }
-
-    // Clear cart and return order
+    const createdOrder: Order = data.order;
+    setOrders(prev => [createdOrder, ...prev.filter(o => o.id !== createdOrder.id)]);
     clearCart();
-    return newOrder;
+    return createdOrder;
   };
 
   const editOrder = async (orderId: string, updatedItems: OrderItem[], newDeliveryAddress?: string) => {
@@ -1967,6 +1816,48 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const sendPasswordResetLink = async (email: string) => {
+    if (isFirebase && isFirebaseAvailable && auth) {
+      await sendPasswordResetEmail(auth, email);
+    } else {
+      console.log("Simulated password reset email sent to:", email);
+    }
+  };
+
+  const sendCustomerWelcomeEmail = async (email: string, companyName: string) => {
+    // Attempt Firebase password reset trigger first
+    if (isFirebase && isFirebaseAvailable && auth) {
+      try {
+        await sendPasswordResetEmail(auth, email);
+      } catch (e) {
+        console.warn("Password reset link generation note:", e);
+      }
+    }
+
+    const res = await fetch("/api/send-welcome-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: email, companyName })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Failed to send welcome email.");
+    }
+  };
+
+  const sendCustomerBroadcastEmail = async (recipients: string[], subject: string, body: string, dealTitle?: string) => {
+    const res = await fetch("/api/send-broadcast-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipients, subject, body, dealTitle })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Failed to send broadcast email.");
+    }
+    return { sentCount: data.sentCount, errors: data.errors };
+  };
+
 
   const submitWarrantyClaim = async (warrantyData) => {
     const newId = `war-${Math.random().toString(36).substr(2, 9)}`;
@@ -2176,6 +2067,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         replicateOrder,
         companySettings,
         warranties, submitWarrantyClaim, updateWarrantyStatus, getCustomer360, updateCompanySettings,
+        sendCustomerWelcomeEmail, sendCustomerBroadcastEmail, sendPasswordResetLink,
         pricingTiers,
         createPricingTier,
         updatePricingTier,

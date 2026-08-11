@@ -17,13 +17,13 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && 
-        (request.auth.token.email == "lew@desmoproducts.com.au" || 
-         request.auth.token.email == "1@1.com" ||
-         request.auth.uid == "rysSGhbaj8O7CIuZp0KiQsDUF" ||
-         request.auth.uid == "FNmQiIOF1tccb2D1z7qfz2Vybgn2" ||
-         request.auth.uid == "G4lb5NRQlkefBFoLb97shFJYuGe2" ||
-         exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+      return isSignedIn() && (
+        request.auth.token.role == "admin" ||
+        request.auth.token.email == "1@1.com" ||
+        request.auth.token.email == "lew@desmoproducts.com.au" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin" ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
     }
 
     function isOwner(userId) {
@@ -48,11 +48,11 @@ service cloud.firestore {
         request.resource.data.email == request.auth.token.email
       );
         
-      // Updating a profile: Admin can update anything. Owner can update company name, but cannot approve themselves or change custom pricing.
+      // Updating a profile: Admin can update anything. Owner can update company name, but cannot approve themselves or change custom pricing/role.
       allow update: if isAdmin() || (
         isOwner(userId) && 
         request.resource.data.status == resource.data.status && 
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['customPricing', 'status', 'allowedProducts', 'email', 'createdAt']))
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['customPricing', 'status', 'role', 'allowedProducts', 'email', 'createdAt']))
       );
     }
 
@@ -103,13 +103,8 @@ service cloud.firestore {
       allow get: if isAdmin() || (isApproved() && resource.data.customerId == request.auth.uid);
       allow list: if isAdmin() || (isApproved() && resource.data.customerId == request.auth.uid);
       
-      // Creating an order: Admins can create for anyone; approved customers can create quotes or invoices for themselves
-      allow create: if isAdmin() || (
-        isApproved() && 
-        request.resource.data.customerId == request.auth.uid &&
-        request.resource.data.documentType in ["QUOTE", "INVOICE"] &&
-        request.resource.data.status in ["pending_approval", "approved", "pending_payment", "quote_requested"]
-      );
+      // Creating an order: Disallowed for direct client SDK requests. Must go through /api/checkout (Admin SDK).
+      allow create: if false;
         
       // Updating an order: Admin can change status (paid/shipped). Customers can accept finalized quotes.
       allow update: if isAdmin() || (
