@@ -15,41 +15,44 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+const testEmail = process.env.TEST_USER_EMAIL || "test@desmoproducts.com.au";
+const testPassword = process.env.TEST_USER_PASSWORD || "123456";
+
 async function main() {
   try {
-    const cred = await createUserWithEmailAndPassword(auth, "test@desmoproducts.com.au", "123456");
+    const cred = await createUserWithEmailAndPassword(auth, testEmail, testPassword);
     const user = cred.user;
     console.log("Created auth user", user.uid);
     
-    await setDoc(doc(db, "customers", user.uid), {
+    await setDoc(doc(db, "users", user.uid), {
       id: user.uid,
-      companyName: "test",
-      email: "test@desmoproducts.com.au",
-      deliveryAddress: "123 Test St",
+      companyName: "Test Company Pty Ltd",
+      email: testEmail,
+      deliveryAddress: "123 Test St, Perth WA 6000",
       status: "approved",
       createdAt: new Date().toISOString(),
       role: "customer"
     });
-    console.log("Created firestore doc for approved customer");
+    console.log("Created firestore doc for approved customer in /users");
     process.exit(0);
   } catch (err) {
     if (err.code === "auth/email-already-in-use") {
-      console.log("User already exists, trying to ensure it is approved...");
+      console.log("User already exists, signing in to verify profile...");
       try {
-        const cred = await signInWithEmailAndPassword(auth, "test@desmoproducts.com.au", "123456");
-        await setDoc(doc(db, "customers", cred.user.uid), {
+        const cred = await signInWithEmailAndPassword(auth, testEmail, testPassword);
+        await setDoc(doc(db, "users", cred.user.uid), {
           id: cred.user.uid,
-          companyName: "test",
-          email: "test@desmoproducts.com.au",
-          deliveryAddress: "123 Test St",
+          companyName: "Test Company Pty Ltd",
+          email: testEmail,
+          deliveryAddress: "123 Test St, Perth WA 6000",
           status: "approved",
           createdAt: new Date().toISOString(),
           role: "customer"
-        });
-        console.log("Updated existing user to approved.");
+        }, { merge: true });
+        console.log("Updated existing user to approved in /users.");
         process.exit(0);
       } catch (e) {
-        console.error("Failed:", e);
+        console.error("Failed to sign in and update existing user:", e);
       }
     } else {
       console.error("Error creating user:", err);
@@ -59,3 +62,4 @@ async function main() {
 }
 
 main();
+

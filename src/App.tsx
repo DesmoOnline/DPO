@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
 import { PortalProvider, usePortal } from "./context/PortalContext";
 import { Header } from "./components/Header";
 import { CatalogView } from "./components/CatalogView";
@@ -7,7 +7,6 @@ import { CartView } from "./components/CartView";
 import { InvoiceDetail } from "./components/InvoiceDetail";
 import { PackingSlipDetail } from "./components/PackingSlipDetail";
 import { OrdersListView } from "./components/OrdersListView";
-import { AdminDashboard } from "./components/AdminDashboard";
 import { RegistrationForm } from "./components/RegistrationForm";
 import { LoginView } from "./components/LoginView";
 import { WarrantyView } from "./components/WarrantyView";
@@ -15,8 +14,10 @@ import { ToastProvider } from "./components/ui/ToastContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { QuickOrderModal } from "./components/QuickOrderModal";
 import { OrderTemplateModal } from "./components/OrderTemplateModal";
-import { EditProductModal } from "./components/EditProductModal";
-import { ShieldCheck, Wrench } from "lucide-react";
+import { ShieldCheck, Wrench, Loader2 } from "lucide-react";
+
+const AdminDashboard = lazy(() => import("./components/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
+const EditProductModal = lazy(() => import("./components/EditProductModal").then(m => ({ default: m.EditProductModal })));
 
 function AppContent() {
   const { currentUser, isAdmin, products, cart, addToCart, replaceCart } = usePortal();
@@ -149,7 +150,16 @@ function AppContent() {
         );
       case "admin":
         if (isAdmin) {
-          return <AdminDashboard onViewInvoice={handleOpenInvoice} />;
+          return (
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-20 text-slate-500 gap-2">
+                <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
+                <span>Loading Admin Portal...</span>
+              </div>
+            }>
+              <AdminDashboard onViewInvoice={handleOpenInvoice} />
+            </Suspense>
+          );
         }
         return (
           <div className="bg-slate-950 border border-slate-900 rounded-xl p-8 text-center" id="app_admin_fallback">
@@ -210,10 +220,12 @@ function AppContent() {
       />
 
       {editingProductId && (
-        <EditProductModal 
-          product={products.find(p => p.id === editingProductId)!} 
-          onClose={() => setEditingProductId(null)} 
-        />
+        <Suspense fallback={null}>
+          <EditProductModal 
+            product={products.find(p => p.id === editingProductId)!} 
+            onClose={() => setEditingProductId(null)} 
+          />
+        </Suspense>
       )}
 
       <footer className="bg-slate-900 text-slate-300 py-8 px-6 text-xs font-mono border-t-4 border-amber-400" id="app_footer">
