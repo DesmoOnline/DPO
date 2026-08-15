@@ -17,7 +17,7 @@ import {
   onSnapshot,
   Timestamp
 } from "firebase/firestore";
-import { onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
+import { onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail, setPersistence, inMemoryPersistence } from "firebase/auth";
 import { generateInvoicePDF } from "../utils/pdfGenerator";
 import { freightEngine } from "../services/freight/freightEngine";
 
@@ -1010,8 +1010,11 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (user.email && (user.email.toLowerCase() === "lew@desmoproducts.com.au" || user.email.toLowerCase() === "1@1.com")) {
-            data.role = "admin";
-            data.status = "approved"; // Force approved status too just in case
+            if (data.role !== "admin" || data.status !== "approved") {
+              data.role = "admin";
+              data.status = "approved";
+              await setDoc(userDocRef, data, { merge: true });
+            }
           }
           setCurrentUser({ id: docSnap.id, ...data } as CustomerProfile);
         } else if (user.email.toLowerCase() === "lew@desmoproducts.com.au" || user.email.toLowerCase() === "1@1.com") {
@@ -1321,6 +1324,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const tempApp = initializeApp(firebaseConfig, tempAppName);
       const tempAuth = getAuth(tempApp);
       try {
+        await setPersistence(tempAuth, inMemoryPersistence);
         const userCreds = await createUserWithEmailAndPassword(tempAuth, formattedEmail, password);
         const uid = userCreds.user.uid;
         const newProfile: Omit<CustomerProfile, "id"> = {
