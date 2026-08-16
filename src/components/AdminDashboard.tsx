@@ -681,7 +681,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
   return (
     <div className="space-y-8" id="admin_dashboard_container">
       {/* Segment Selector tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto max-w-full py-1 border-b border-slate-100 pb-4" id="admin_tab_selector">
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none max-w-full py-1 border-b border-slate-100 pb-4" id="admin_tab_selector">
         {(["accounting", "company", "shipping", "customers", "products", "quotes", "rateBreaks", "warranties"] as const).map((tab) => {
           const label = tab === "accounting" 
             ? "Bookkeeping & GST" 
@@ -1000,6 +1000,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
               </div>
 
               <div className="overflow-x-auto text-xs">
+              <div className="overflow-x-auto w-full">
                 <table className="w-full text-left font-sans">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-slate-550 uppercase text-[9px] font-bold tracking-wider">
@@ -1030,6 +1031,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                     )}
                   </tbody>
                 </table>
+              </div>
               </div>
             </div>
 
@@ -1753,7 +1755,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                       </p>
 
                       <div className="border border-slate-200 rounded-lg overflow-hidden text-xs">
-                        <table className="w-full text-left font-sans">
+                      <div className="overflow-x-auto w-full">
+                        <table className="w-full text-left font-sans min-w-[600px]">
                           <thead>
                             <tr className="bg-slate-50 text-slate-500 font-mono text-[9px] uppercase border-b border-slate-200 font-semibold">
                               <th className="px-4 py-2.5">Component & SKU</th>
@@ -1820,6 +1823,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                             })}
                           </tbody>
                         </table>
+                      </div>
                       </div>
                     </div>
 
@@ -2226,7 +2230,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
             </h3>
 
             <div className="border border-slate-200 rounded-lg overflow-hidden text-xs">
-              <table className="w-full text-left font-sans">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left font-sans min-w-[800px]">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 border-b border-slate-200 font-mono text-[9px] uppercase font-semibold">
                     <th className="px-3 py-2.5">Equipment Details</th>
@@ -2363,6 +2368,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                 </tbody>
               </table>
             </div>
+            </div>
           </div>
         </div>
       )}
@@ -2377,7 +2383,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
             </div>
 
             <div className="overflow-x-auto border border-slate-200 rounded-lg">
-              <table className="w-full text-xs">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-xs min-w-[600px]">
                 <thead>
                   <tr className="bg-slate-50 text-slate-600 uppercase tracking-wider border-b border-slate-200">
                     <th className="px-4 py-3 text-left">Quote ID</th>
@@ -2429,6 +2436,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                   ))}
                 </tbody>
               </table>
+            </div>
             </div>
           </div>
         </div>
