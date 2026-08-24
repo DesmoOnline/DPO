@@ -1001,8 +1001,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
                   )}
                 </div>
               </div>
-            </div>
 
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-500 uppercase font-semibold">Default Product Holding Image</label>
+                <div className="flex gap-2">
+                  <div className="flex-1 space-y-2">
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg, image/webp"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              setCsForm(prev => ({ ...prev, defaultProductImageBase64: event.target?.result as string }));
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        title="Upload Holding Image"
+                      />
+                      <div className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-800 font-medium flex items-center justify-center gap-2 hover:bg-slate-100 transition cursor-pointer">
+                        <Upload className="w-4 h-4 text-blue-600" />
+                        <span className="text-slate-600">Click to upload holding image (PNG/JPG)</span>
+                      </div>
+                    </div>
+                    <input
+                      type="text"
+                      value={csForm.defaultProductImageBase64 || ""}
+                      onChange={(e) => setCsForm(prev => ({ ...prev, defaultProductImageBase64: e.target.value }))}
+                      placeholder="...or paste Base64 / URL directly"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-[10px] text-slate-800 font-mono focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                  {csForm.defaultProductImageBase64 && (
+                    <div className="w-16 h-16 border border-slate-200 rounded-lg overflow-hidden flex-shrink-0 bg-white flex items-center justify-center p-1">
+                      <img src={csForm.defaultProductImageBase64} alt="Holding Image preview" className="max-w-full max-h-full object-contain" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
             <div className="space-y-4">
               <h4 className="text-sm font-bold text-slate-800 uppercase font-mono mb-4 text-emerald-600">Banking & Terms</h4>
               

@@ -13,7 +13,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
     products, 
     currentUser, 
     addToCart, 
-    isAdmin 
+    isAdmin,
+    companySettings
   } = usePortal();
 
   const [qty, setQty] = useState(1);
@@ -119,12 +120,16 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
           
           {/* Left Side: Image */}
           <div className="space-y-4">
-            <div className="aspect-video sm:aspect-square rounded-xl overflow-hidden bg-slate-900 border border-slate-200 relative">
-              <ProductPlaceholderImage
-                sku={product.sku}
-                name={product.name}
-                category={product.category}
-              />
+            <div className="aspect-video sm:aspect-square rounded-xl overflow-hidden bg-slate-900 border border-slate-200 relative flex items-center justify-center">
+              {product.imageUrl || companySettings.defaultProductImageBase64 || "/assets/default-product.png" ? (
+                <img src={product.imageUrl || companySettings.defaultProductImageBase64 || "/assets/default-product.png"} alt={product.name} className="h-full w-full object-cover" />
+              ) : (
+                <ProductPlaceholderImage
+                  sku={product.sku}
+                  name={product.name}
+                  category={product.category}
+                />
+              )}
               {product.isRestricted && (
                 <div className="absolute top-4 right-4 bg-slate-900 text-white font-mono text-[10px] px-3 py-1.5 font-semibold uppercase tracking-wider rounded-lg shadow-sm flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-white" />

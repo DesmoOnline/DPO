@@ -154,6 +154,8 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
+  logoBase64: "",
+  defaultProductImageBase64: "",
   tradingName: "Desmo Products",
   companyName: "Desmo Products Pty Ltd",
   abn: "45 123 456 789",

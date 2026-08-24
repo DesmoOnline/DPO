@@ -143,6 +143,7 @@ export interface Order {
 
 export interface CompanySettings {
   logoBase64?: string;
+  defaultProductImageBase64?: string;
   tradingName: string;
   companyName: string;
   abn: string;
