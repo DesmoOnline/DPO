@@ -184,7 +184,10 @@ const DEFAULT_PRODUCTS: Product[] = [
     imageUrl: "/assets/default-product.png",
     baseWholesalePrice: 236,
     isRestricted: false,
-    quantityBreaks: [],
+    quantityBreaks: [
+      { minQty: 7, discountType: "fixed", discountValue: 226 },
+      { minQty: 16, discountType: "fixed", discountValue: 216 }
+    ],
     category: "General",
     stock: 100,
     allowBackorders: true,
@@ -201,7 +204,9 @@ const DEFAULT_PRODUCTS: Product[] = [
     imageUrl: "/assets/default-product.png",
     baseWholesalePrice: 45,
     isRestricted: false,
-    quantityBreaks: [],
+    quantityBreaks: [
+      { minQty: 16, discountType: "fixed", discountValue: 40 }
+    ],
     category: "General",
     stock: 100,
     allowBackorders: true,
@@ -218,7 +223,9 @@ const DEFAULT_PRODUCTS: Product[] = [
     imageUrl: "/assets/default-product.png",
     baseWholesalePrice: 45,
     isRestricted: false,
-    quantityBreaks: [],
+    quantityBreaks: [
+      { minQty: 16, discountType: "fixed", discountValue: 40 }
+    ],
     category: "General",
     stock: 100,
     allowBackorders: true,

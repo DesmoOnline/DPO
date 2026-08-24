@@ -71,15 +71,26 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
   // Qty breaks calculations helper
   const getPriceForQty = (quantity: number) => {
     let discountPercent = 0;
+    let unitPrice = activePrice;
+    
     if (product.quantityBreaks && product.quantityBreaks.length > 0) {
       const matchedBreak = [...product.quantityBreaks]
         .sort((a,b) => b.minQty - a.minQty)
         .find(qb => quantity >= qb.minQty);
       if (matchedBreak) {
-        discountPercent = matchedBreak.discountPercent;
+        if (matchedBreak.discountType === "fixed") {
+          unitPrice = matchedBreak.discountValue;
+          discountPercent = Math.round(((activePrice - unitPrice) / activePrice) * 100);
+        } else if (matchedBreak.discountType === "percentage") {
+          discountPercent = matchedBreak.discountValue;
+          unitPrice = activePrice * (1 - discountPercent / 100);
+        } else if (matchedBreak.discountPercent !== undefined) {
+          discountPercent = matchedBreak.discountPercent;
+          unitPrice = activePrice * (1 - discountPercent / 100);
+        }
       }
     }
-    const unitPrice = activePrice * (1 - discountPercent / 100);
+    
     const lineSubtotal = unitPrice * quantity;
     const gst = lineSubtotal * 0.10;
     return {
@@ -214,13 +225,27 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ productId,
                               <td className="px-3 py-2 text-right font-medium">${activePrice.toFixed(2)}</td>
                             </tr>
                             {product.quantityBreaks.map((qb, i) => {
-                              const discPrice = activePrice * (1 - qb.discountPercent / 100);
+                              let discPrice = activePrice;
+                              let dp = 0;
+                              if (qb.discountType === "fixed") {
+                                discPrice = qb.discountValue;
+                                dp = Math.round(((activePrice - discPrice) / activePrice) * 100);
+                              } else if (qb.discountType === "percentage") {
+                                dp = qb.discountValue;
+                                discPrice = activePrice * (1 - dp / 100);
+                              } else if (qb.discountPercent !== undefined) {
+                                dp = qb.discountPercent;
+                                discPrice = activePrice * (1 - dp / 100);
+                              }
+                              
                               const nextQb = product.quantityBreaks?.[i + 1];
                               const maxQtyStr = nextQb ? ` - ${(nextQb.minQty - 1)}` : "+";
                               return (
                                 <tr key={i} className="hover:bg-slate-50/50">
                                   <td className="px-3 py-2 font-medium">{qb.minQty}{maxQtyStr} units</td>
-                                  <td className="px-3 py-2 text-right text-emerald-600 font-bold">-{qb.discountPercent}%</td>
+                                  <td className="px-3 py-2 text-right text-emerald-600 font-bold">
+                                    {qb.discountType === "fixed" ? `Fixed Rate` : `-${dp}%`}
+                                  </td>
                                   <td className="px-3 py-2 text-right font-bold text-slate-900">${discPrice.toFixed(2)}</td>
                                 </tr>
                               );
