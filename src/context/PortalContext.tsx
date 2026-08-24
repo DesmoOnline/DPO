@@ -179,7 +179,7 @@ const DEFAULT_PRODUCTS: Product[] = [
     name: "Desmo True RMS Digital Multimeter",
     sku: "DP-DMM-401",
     description: "Industrial grade auto-ranging digital multimeter with high safety rating (CAT III 1000V / CAT IV 600V). Features temperature measurement, dual displays, and micro-amp testing for flame sensors.",
-    imageUrl: "https://images.unsplash.com/photo-not-used",
+    imageUrl: "",
     baseWholesalePrice: 150.00,
     isRestricted: false,
     quantityBreaks: [
@@ -199,7 +199,7 @@ const DEFAULT_PRODUCTS: Product[] = [
     name: "Portable Appliance Safety Tester",
     sku: "DP-PAT-302",
     description: "Fast and easy-to-use handheld PAT tester. Features clear pass/fail indicators, earth bond test, and insulation resistance checks for compliant electrical safety inspections.",
-    imageUrl: "https://images.unsplash.com/photo-not-used",
+    imageUrl: "",
     baseWholesalePrice: 180.00,
     isRestricted: false,
     quantityBreaks: [
@@ -219,7 +219,7 @@ const DEFAULT_PRODUCTS: Product[] = [
     name: "Desmo Handheld Digital Oscilloscope",
     sku: "DP-OSC-200",
     description: "Extremely high-precision, dual-channel 100MHz handheld oscilloscope. Features advanced waveform trigger capture, color TFT screen, and battery power for field diagnostics. Restricted access.",
-    imageUrl: "https://images.unsplash.com/photo-not-used",
+    imageUrl: "",
     baseWholesalePrice: 1250.00,
     isRestricted: true,
     quantityBreaks: [
@@ -238,7 +238,7 @@ const DEFAULT_PRODUCTS: Product[] = [
     name: "Insulation Resistance Diagnostic Tester",
     sku: "DP-IRT-500",
     description: "Rugged high-voltage diagnostic insulation tester for checking motors, generators, cables, and switchgears. Test voltages up to 2500V with PI/DAR ratio calculations.",
-    imageUrl: "https://images.unsplash.com/photo-not-used",
+    imageUrl: "",
     baseWholesalePrice: 95.00,
     isRestricted: false,
     quantityBreaks: [
@@ -257,7 +257,7 @@ const DEFAULT_PRODUCTS: Product[] = [
     name: "True RMS AC/DC Clamp Meter",
     sku: "DP-CLP-600",
     description: "Professional jaw clamp current meter with True RMS accuracy. Replaces traditional line breaking methods, allowing safe current measurements in tight panel nodes. Restricted access.",
-    imageUrl: "https://images.unsplash.com/photo-not-used",
+    imageUrl: "",
     baseWholesalePrice: 340.00,
     isRestricted: true,
     quantityBreaks: [
@@ -276,7 +276,7 @@ const DEFAULT_PRODUCTS: Product[] = [
     name: "Precision LCR Bridge Meter",
     sku: "DP-LCR-100",
     description: "High-accuracy component tester for measuring inductance (L), capacitance (C), and resistance (R) with dissipation factor (D) and quality factor (Q). Dual display layout.",
-    imageUrl: "https://images.unsplash.com/photo-not-used",
+    imageUrl: "",
     baseWholesalePrice: 110.00,
     isRestricted: false,
     quantityBreaks: [
