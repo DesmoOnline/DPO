@@ -61,6 +61,7 @@ const products = lines.map(line => {
         id: sku.replace(/[^a-zA-Z0-9-]/g, '-'),
         name: name,
         sku: sku,
+        imageUrl: "/assets/default-product.png",
         baseWholesalePrice: price
     };
 }).filter(Boolean);
