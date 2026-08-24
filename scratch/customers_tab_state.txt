@@ -1,0 +1,63 @@
+
+  // Email & Broadcast State
+  const [isSendingWelcomeEmail, setIsSendingWelcomeEmail] = useState(false);
+  const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
+  const [broadcastSubject, setBroadcastSubject] = useState("");
+  const [broadcastBody, setBroadcastBody] = useState("");
+  const [broadcastDealTitle, setBroadcastDealTitle] = useState("");
+  const [selectedBroadcastRecipients, setSelectedBroadcastRecipients] = useState<string[]>([]);
+  const [isSendingBroadcast, setIsSendingBroadcast] = useState(false);
+
+  // CRM State
+
+  // Add Customer modal states
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [addCustomerEmail, setAddCustomerEmail] = useState("");
+  const [addCustomerPassword, setAddCustomerPassword] = useState("");
+  const [addCustomerCompany, setAddCustomerCompany] = useState("");
+  const [addCustomerAddress, setAddCustomerAddress] = useState("");
+  const [isAddingCustomer, setIsAddingCustomer] = useState(false);
+  const [addCustomerError, setAddCustomerError] = useState<string | null>(null);
+
+  // Feedback states
+  const [pricingInputValues, setPricingInputValues] = useState<{ [customerId_productId: string]: string }>({});
+
+  // CRM History Pagination State
+  const [historyPage, setHistoryPage] = useState(1);
+
+  // Reset page when customer selection changes
+  useEffect(() => {
+    setHistoryPage(1);
+
+
+  const handleExportBackup = () => {
+    const backupData = {
+      timestamp: new Date().toISOString(),
+      companySettings,
+      products,
+      customers,
+      orders,
+      categories
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `desmo-backup-${new Date().toISOString().split("T")[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleUpdatePriceOverride = (customerId: string, productId: string) => {
+    const valKey = `${customerId}_${productId}`;
+    const priceStr = pricingInputValues[valKey];
+    if (priceStr === undefined || priceStr === "") return;
+    const price = parseFloat(priceStr);
+    if (isNaN(price) || price < 0) return;
+    
+    updateCustomerPricing(customerId, productId, price);
+    setPricingInputValues(prev => ({ ...prev, [valKey]: "" }));
+    alert("Custom contract pricing updated!");
+  };

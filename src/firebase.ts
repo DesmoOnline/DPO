@@ -8,15 +8,14 @@ import {
   persistentMultipleTabManager 
 } from "firebase/firestore";
 
-// The user's Firebase config from their Google Business Account
 export const firebaseConfig = {
-  apiKey: "AIzaSyDzOel-toXx7oT3DJ1GqgerW-X6dIdsyh0",
-  authDomain: "desmoproductsonline.firebaseapp.com",
-  projectId: "desmoproductsonline",
-  storageBucket: "desmoproductsonline.firebasestorage.app",
-  messagingSenderId: "684470912687",
-  appId: "1:684470912687:web:9b31a83fb8217cd691f65a",
-  measurementId: "G-6MM332FX5Y"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ""
 };
 
 let app;

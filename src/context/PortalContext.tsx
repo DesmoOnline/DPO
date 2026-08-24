@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { Product, CustomerProfile, Order, OrderItem, QuantityBreak, CompanySettings, PricingTier, DocumentType, Customer360, Warranty } from "../types";
 import { isFirebaseAvailable, db, auth, firebaseConfig } from "../firebase";
 import { initializeApp, deleteApp } from "firebase/app";
@@ -20,6 +20,10 @@ import {
 import { onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail, setPersistence, inMemoryPersistence } from "firebase/auth";
 import { generateInvoicePDF } from "../utils/pdfGenerator";
 import { freightEngine } from "../services/freight/freightEngine";
+import { authService } from "../services/authService";
+import { productService } from "../services/productService";
+import { orderService } from "../services/orderService";
+import { customerService } from "../services/customerService";
 
 // Error structure required by firebase-integration skill
 enum OperationType {
@@ -810,18 +814,16 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Update sandbox storage whenever sandbox states change
   useEffect(() => {
-    if (!isFirebase) {
-      localStorage.setItem("dp_sandbox_products_v2", JSON.stringify(products));
-      localStorage.setItem("dp_sandbox_customers_v2", JSON.stringify(customers));
-      localStorage.setItem("dp_sandbox_orders_v2", JSON.stringify(orders));
-      localStorage.setItem("dp_sandbox_warranties", JSON.stringify(warranties));
-      if (currentUser) {
-        localStorage.setItem("dp_sandbox_user", JSON.stringify(currentUser));
-      } else {
-        localStorage.removeItem("dp_sandbox_user");
-      }
+    localStorage.setItem("dp_sandbox_products_v2", JSON.stringify(products));
+    localStorage.setItem("dp_sandbox_customers_v2", JSON.stringify(customers));
+    localStorage.setItem("dp_sandbox_orders_v2", JSON.stringify(orders));
+    localStorage.setItem("dp_sandbox_warranties", JSON.stringify(warranties));
+    if (currentUser) {
+      localStorage.setItem("dp_sandbox_user", JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem("dp_sandbox_user");
     }
-  }, [products, customers, orders, currentUser, isFirebase]);
+  }, [products, customers, orders, currentUser, warranties]);
 
   // Synchronize with Firebase if Live Mode is enabled
   useEffect(() => {
@@ -953,22 +955,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     
     if (isFirebase && isFirebaseAvailable) {
       try {
-        // Create user in Firebase Auth first
-        const userCredential = await createUserWithEmailAndPassword(auth, formattedEmail, password);
-        const user = userCredential.user;
-
-        const newUserProfile: Omit<CustomerProfile, "id"> = {
-          email: formattedEmail,
-          companyName,
-          status: "pending",
-          createdAt: new Date().toISOString(),
-          customPricing: {},
-          allowedProducts: [],
-          deliveryAddresses: [deliveryAddress]
-        };
-        // Use user.uid as the document ID
-        await setDoc(doc(db, "users", user.uid), newUserProfile);
-        const profile: CustomerProfile = { id: user.uid, ...newUserProfile };
+        const profile = await authService.register(auth, db, formattedEmail, password, companyName, deliveryAddress);
         setCurrentUser(profile);
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, "users");
@@ -1044,8 +1031,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [isFirebase]);
 
   const logout = async () => {
-    if (auth) {
-      await signOut(auth);
+    if (isFirebase && isFirebaseAvailable) {
+      await authService.logout(auth);
     }
     setCurrentUser(null);
     setCart([]);
@@ -1096,7 +1083,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Cart actions
-  const addToCart = (product: Product, qty: number, selectedColors?: string[]) => {
+  const addToCart = useCallback((product: Product, qty: number, selectedColors?: string[]) => {
     setCart(prev => {
       const existingIdx = prev.findIndex(item => 
         item.product.id === product.id && 
@@ -1109,21 +1096,21 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       return [...prev, { product, qty, selectedColors }];
     });
-  };
+  }, []);
 
-  const removeFromCart = (productId: string) => {
+  const removeFromCart = useCallback((productId: string) => {
     setCart(prev => prev.filter(item => item.product.id !== productId));
-  };
+  }, []);
 
-  const updateCartQty = (productId: string, qty: number) => {
+  const updateCartQty = useCallback((productId: string, qty: number) => {
     if (qty <= 0) {
       removeFromCart(productId);
       return;
     }
     setCart(prev => prev.map(item => item.product.id === productId ? { ...item, qty } : item));
-  };
+  }, [removeFromCart]);
 
-  const clearCart = () => setCart([]);
+  const clearCart = useCallback(() => setCart([]), []);
 
   const replaceCart = (items: OrderItem[]) => {
     const newCart = items.map((item) => {
@@ -1154,35 +1141,19 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     documentMode: DocumentType = "INVOICE"
   ): Promise<Order> => {
     if (!currentUser) throw new Error("Authentication required to place orders");
-    if (!isActualAdmin && currentUser.status !== "approved") throw new Error("Your account must be approved to order");
-    if (cart.length === 0) throw new Error("Your cart is empty");
-
-    const effectiveCustomerId = onBehalfOf ? onBehalfOf.customerId : currentUser.id;
-
-    const payload = {
-      customerId: effectiveCustomerId,
-      cartItems: cart.map(item => ({
-        productId: item.product.id,
-        qty: item.qty,
-        ...(item.selectedColors && item.selectedColors.length > 0 ? { selectedColors: item.selectedColors } : {})
-      })),
-      documentType: documentMode,
+    
+    // Delegate to orderService
+    const createdOrder = await orderService.placeOrder(
+      cart,
+      currentUser,
+      isActualAdmin,
       notes,
+      onBehalfOf,
+      ownTransport,
       deliveryAddress,
-      ownTransport
-    };
+      documentMode
+    );
 
-    const res = await fetch('/api/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || "Checkout failed");
-    }
-
-    const createdOrder: Order = data.order;
     setOrders(prev => [createdOrder, ...prev.filter(o => o.id !== createdOrder.id)]);
     clearCart();
     return createdOrder;
@@ -1191,31 +1162,30 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const editOrder = async (orderId: string, updatedItems: OrderItem[], newDeliveryAddress?: string) => {
     if (!isAdmin && isFirebase) return;
     
-    const existingOrder = orders.find(o => o.id === orderId);
-    const shippingCharge = existingOrder?.shippingCharge || 0;
-    
-    // Recalculate totals
-    const subtotal = Number(updatedItems.reduce((acc, item) => acc + item.totalLineAmount, 0).toFixed(2));
-    const gstAmount = Number(((subtotal + shippingCharge) * 0.10).toFixed(2));
-    const totalAmount = Number((subtotal + shippingCharge + gstAmount).toFixed(2));
-
-    const updates: Partial<Order> = {
-      items: updatedItems,
-      subtotal,
-      gstAmount,
-      totalAmount,
-    };
-    if (newDeliveryAddress !== undefined) {
-      updates.deliveryAddress = newDeliveryAddress;
-    }
-
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await updateDoc(doc(db, "orders", orderId), updates as any);
+        const updates = await orderService.editOrder(db, orders, orderId, updatedItems, newDeliveryAddress);
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
       }
     } else {
+      // Sandbox mode recalculation
+      const existingOrder = orders.find(o => o.id === orderId);
+      const shippingCharge = existingOrder?.shippingCharge || 0;
+      const subtotal = Number(updatedItems.reduce((acc, item) => acc + item.totalLineAmount, 0).toFixed(2));
+      const gstAmount = Number(((subtotal + shippingCharge) * 0.10).toFixed(2));
+      const totalAmount = Number((subtotal + shippingCharge + gstAmount).toFixed(2));
+
+      const updates: Partial<Order> = {
+        items: updatedItems,
+        subtotal,
+        gstAmount,
+        totalAmount,
+      };
+      if (newDeliveryAddress !== undefined) {
+        updates.deliveryAddress = newDeliveryAddress;
+      }
       setOrders(prev => {
         const next = prev.map(o => o.id === orderId ? { ...o, ...updates } : o);
         localStorage.setItem("dp_sandbox_orders_v2", JSON.stringify(next));
@@ -1225,42 +1195,47 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const replicateOrder = async (orderId: string): Promise<string> => {
-    const src = orders.find(o => o.id === orderId);
-    if (!src) throw new Error("Source order/quote not found");
-
-    const isQuote = src.documentType === "QUOTE";
-    const prefix = isQuote ? "QTE" : "INV";
-    const nextId = `${prefix}-${Date.now().toString().slice(-5)}${Math.floor(10 + Math.random() * 90)}`;
-
-    const {
-      approvedAt,
-      paidAt,
-      shippedAt,
-      packingStatus,
-      consignmentNote,
-      freightCompany,
-      ...rest
-    } = src;
-
-    const newOrder: Order = {
-      ...rest,
-      id: nextId,
-      status: isQuote ? "quote_finalized" : "pending_approval",
-      createdAt: new Date().toISOString()
-    };
-
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await setDoc(doc(db, "orders", nextId), newOrder);
+        const nextId = await orderService.replicateOrder(db, orders, orderId);
+        // We'll need to fetch/update orders list, but since the local state might desync,
+        // let's also replicate it optimistically or wait for the real-time query.
+        // For simplicity, we create the local representation:
+        const src = orders.find(o => o.id === orderId);
+        if (src) {
+          const isQuote = src.documentType === "QUOTE";
+          const { approvedAt, paidAt, shippedAt, packingStatus, consignmentNote, freightCompany, ...rest } = src;
+          const newOrder: Order = {
+            ...rest,
+            id: nextId,
+            status: isQuote ? "quote_finalized" : "pending_approval",
+            createdAt: new Date().toISOString()
+          };
+          setOrders(prev => [newOrder, ...prev]);
+        }
+        return nextId;
       } catch (error) {
-        handleFirestoreError(error, OperationType.CREATE, `orders/${nextId}`);
+        handleFirestoreError(error, OperationType.CREATE, `orders/${orderId}`);
         throw error;
       }
     } else {
+      const src = orders.find(o => o.id === orderId);
+      if (!src) throw new Error("Source order/quote not found");
+      const isQuote = src.documentType === "QUOTE";
+      const prefix = isQuote ? "QTE" : "INV";
+      const nextId = `${prefix}-${Date.now().toString().slice(-5)}${Math.floor(10 + Math.random() * 90)}`;
+      const { approvedAt, paidAt, shippedAt, packingStatus, consignmentNote, freightCompany, ...rest } = src;
+      const newOrder: Order = {
+        ...rest,
+        id: nextId,
+        status: isQuote ? "quote_finalized" : "pending_approval",
+        createdAt: new Date().toISOString()
+      };
       setOrders(prev => [newOrder, ...prev]);
+      return nextId;
     }
-    return nextId;
   };
+
 
   // Admin Actions
   const approveCustomer = async (customerId: string) => {
@@ -1268,10 +1243,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await updateDoc(doc(db, "users", customerId), {
-          status: "approved",
-          approvedAt: new Date().toISOString()
-        });
+        await customerService.approveCustomer(db, customerId);
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${customerId}`);
       }
@@ -1288,7 +1260,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!isAdmin && isFirebase) return;
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await updateDoc(doc(db, "users", customerId), { role });
+        await customerService.updateCustomerRole(db, customerId, role);
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${customerId}`);
       }
@@ -1302,9 +1274,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await updateDoc(doc(db, "users", customerId), {
-          status: "rejected"
-        });
+        await customerService.rejectCustomer(db, customerId);
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${customerId}`);
       }
@@ -1381,13 +1351,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isFirebase && isFirebaseAvailable) {
       try {
-        const customerRef = doc(db, "users", customerId);
-        const snap = await getDoc(customerRef);
-        if (snap.exists()) {
-          const customPricing = snap.data().customPricing || {};
-          customPricing[productId] = Number(price);
-          await updateDoc(customerRef, { customPricing });
-        }
+        await customerService.updateCustomerPricing(db, customerId, productId, price);
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${customerId}`);
       }
@@ -1407,13 +1371,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isFirebase && isFirebaseAvailable) {
       try {
-        const customerRef = doc(db, "users", customerId);
-        const snap = await getDoc(customerRef);
-        if (snap.exists()) {
-          const customPricing = snap.data().customPricing || {};
-          delete customPricing[productId];
-          await updateDoc(customerRef, { customPricing });
-        }
+        await customerService.removeCustomerPricing(db, customerId, productId);
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${customerId}`);
       }
@@ -1434,17 +1392,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isFirebase && isFirebaseAvailable) {
       try {
-        const customerRef = doc(db, "users", customerId);
-        const snap = await getDoc(customerRef);
-        if (snap.exists()) {
-          const productRateBreakAlignments = snap.data().productRateBreakAlignments || {};
-          if (rateBreakId) {
-            productRateBreakAlignments[productId] = rateBreakId;
-          } else {
-            delete productRateBreakAlignments[productId];
-          }
-          await updateDoc(customerRef, { productRateBreakAlignments });
-        }
+        await customerService.updateProductRateBreakAlignment(db, customerId, productId, rateBreakId);
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${customerId}`);
       }
@@ -1469,18 +1417,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isFirebase && isFirebaseAvailable) {
       try {
-        const customerRef = doc(db, "users", customerId);
-        const snap = await getDoc(customerRef);
-        if (snap.exists()) {
-          const allowedProducts = snap.data().allowedProducts || [];
-          const index = allowedProducts.indexOf(productId);
-          if (index > -1) {
-            allowedProducts.splice(index, 1);
-          } else {
-            allowedProducts.push(productId);
-          }
-          await updateDoc(customerRef, { allowedProducts });
-        }
+        await customerService.toggleRestrictedProductAccess(db, customerId, productId);
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${customerId}`);
       }
@@ -1501,19 +1438,20 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+
   const createProduct = async (product: Omit<Product, "id">) => {
     if (!isAdmin && isFirebase) return;
 
-    const newId = `prod-${Math.random().toString(36).substr(2, 9)}`;
-    const fullProd: Product = { id: newId, ...product };
-
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await setDoc(doc(db, "products", newId), product);
+        const newId = await productService.createProduct(db, product);
+        // We'll trust the real-time onSnapshot queries to update the state
       } catch (error) {
-        handleFirestoreError(error, OperationType.CREATE, `products/${newId}`);
+        handleFirestoreError(error, OperationType.CREATE, `products`);
       }
     } else {
+      const newId = `prod-${Math.random().toString(36).substr(2, 9)}`;
+      const fullProd: Product = { id: newId, ...product };
       setProducts(prev => [...prev, fullProd]);
     }
   };
@@ -1523,8 +1461,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isFirebase && isFirebaseAvailable) {
       try {
-        const productRef = doc(db, "products", productId);
-        await setDoc(productRef, updatedFields as any, { merge: true });
+        await productService.updateProduct(db, productId, updatedFields);
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `products/${productId}`);
       }
@@ -1545,7 +1482,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await deleteDoc(doc(db, "products", productId));
+        await productService.deleteProduct(db, productId);
       } catch (error) {
         // Revert on error
         console.error("Delete failed, reverting:", error);
@@ -1567,6 +1504,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       localStorage.setItem("dp_sandbox_products_v2", JSON.stringify(products.filter(p => p.id !== productId)));
     }
   };
+
 
   const addCategory = async (category: string) => {
     if (!isActualAdmin || !category.trim()) return;
@@ -1591,20 +1529,20 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateOrderStatus = async (orderId: string, status: Order["status"]) => {
     if (!isAdmin && isFirebase) return;
 
-    const updates: Partial<Order> = { status };
-    if (status === "paid") {
-      updates.paidAt = new Date().toISOString();
-    } else if (status === "shipped") {
-      updates.shippedAt = new Date().toISOString();
-    }
-
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await updateDoc(doc(db, "orders", orderId), updates);
+        const updates = await orderService.updateOrderStatus(db, orderId, status);
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
       }
     } else {
+      const updates: Partial<Order> = { status };
+      if (status === "paid") {
+        updates.paidAt = new Date().toISOString();
+      } else if (status === "shipped") {
+        updates.shippedAt = new Date().toISOString();
+      }
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
     }
   };
@@ -1613,7 +1551,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!isAdmin && isFirebase) return;
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await updateDoc(doc(db, "orders", orderId), dispatch);
+        await orderService.updateOrderDispatch(db, orderId, dispatch);
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
       }
@@ -1729,7 +1667,8 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await updateDoc(doc(db, "orders", orderId), updates);
+        await orderService.declineOrder(db, orderId);
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
       }
@@ -1741,17 +1680,13 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteOrder = async (orderId: string) => {
     if (!isActualAdmin) return;
 
-    const orderToDelete = orders.find(o => o.id === orderId);
-    if (!orderToDelete) return;
-
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await deleteDoc(doc(db, "orders", orderId));
+        await orderService.deleteOrder(db, orderId);
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `orders/${orderId}`);
       }
     }
-
     setOrders(prev => prev.filter(o => o.id !== orderId));
   };
 
@@ -1761,27 +1696,30 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const orderToUpdate = orders.find(o => o.id === orderId);
     if (!orderToUpdate) return;
 
-    const rawSubtotal = Number(orderToUpdate.items.reduce((acc, item) => acc + item.totalLineAmount, 0).toFixed(2));
     const credit = creditAdjustment !== undefined ? creditAdjustment : (orderToUpdate.creditAdjustment || 0);
-    const newGst = Number(((rawSubtotal + shippingCharge - credit) * 0.10).toFixed(2));
-    const newTotal = Number((rawSubtotal + shippingCharge - credit + newGst).toFixed(2));
-
-    const updates: Partial<Order> = {
-      shippingCharge,
-      creditAdjustment: credit,
-      gstAmount: newGst,
-      totalAmount: newTotal,
-      status: orderToUpdate.documentType === "QUOTE" ? "quote_finalized" : orderToUpdate.status,
-      shippingReviewRequested: false
-    };
 
     if (isFirebase && isFirebaseAvailable) {
       try {
-        await updateDoc(doc(db, "orders", orderId), updates);
+        await orderService.addShippingCharge(db, orderId, shippingCharge, credit);
+        // Live listener will pick up the updated doc total.
       } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
+        // Fallback or bubble up
+        console.error("Failed to add shipping charge:", error);
       }
     } else {
+      // Sandbox mode recalculation
+      const rawSubtotal = Number(orderToUpdate.items.reduce((acc, item) => acc + item.totalLineAmount, 0).toFixed(2));
+      const newGst = Number(((rawSubtotal + shippingCharge - credit) * 0.10).toFixed(2));
+      const newTotal = Number((rawSubtotal + shippingCharge - credit + newGst).toFixed(2));
+
+      const updates: Partial<Order> = {
+        shippingCharge,
+        creditAdjustment: credit,
+        gstAmount: newGst,
+        totalAmount: newTotal,
+        status: orderToUpdate.documentType === "QUOTE" ? "quote_finalized" : orderToUpdate.status,
+        shippingReviewRequested: false
+      };
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
     }
   };
@@ -1803,6 +1741,7 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o));
     }
   };
+
 
   const updateCompanySettings = async (settings: CompanySettings) => {
     if (!isAdmin && isFirebase) return;
