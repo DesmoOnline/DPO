@@ -40,7 +40,7 @@ interface SimpleAdminViewProps {
 
 const SafeProductImage: React.FC<{ src?: string; alt: string; className: string }> = ({ src, alt, className }) => {
   const [error, setError] = useState(false);
-  const finalSrc = error || !src ? "/desmo_multimeter.png" : src;
+  const finalSrc = error || !src ? "/assets/default-product.png" : src;
 
   return (
     <img
@@ -94,7 +94,7 @@ export const SimpleAdminView: React.FC<SimpleAdminViewProps> = ({
     price: "",
     stock: "50",
     category: "Digital Meters",
-    image: "/desmo_multimeter.png"
+    image: "/assets/default-product.png"
   });
 
   // --- Broadcast State ---
@@ -495,7 +495,7 @@ Total Invoices in Period:              ${basReport.orderCount}
         baseWholesalePrice: parseFloat(newProdForm.price),
         stock: parseInt(newProdForm.stock) || 50,
         category: newProdForm.category,
-        imageUrl: newProdForm.image || "/desmo_multimeter.png",
+        imageUrl: newProdForm.image || "/assets/default-product.png",
         isRestricted: false,
         allowBackorders: true,
         autoApprove: false,
@@ -513,7 +513,7 @@ Total Invoices in Period:              ${basReport.orderCount}
         price: "",
         stock: "50",
         category: "Digital Meters",
-        image: "/desmo_multimeter.png"
+        image: "/assets/default-product.png"
       });
     } catch (err: any) {
       showToast("Failed to create product.", "error");
