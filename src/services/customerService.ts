@@ -10,7 +10,7 @@ export const customerService = {
 
   async rejectCustomer(db: Firestore, customerId: string): Promise<void> {
     await updateDoc(doc(db, "users", customerId), {
-      status: "declined"
+      status: "rejected"
     });
   },
 

@@ -103,8 +103,8 @@ service cloud.firestore {
       allow get: if isAdmin() || (isApproved() && resource.data.customerId == request.auth.uid);
       allow list: if isAdmin() || (isApproved() && resource.data.customerId == request.auth.uid);
       
-      // Creating an order: Disallowed for direct client SDK requests. Must go through /api/checkout (Admin SDK).
-      allow create: if false;
+      // Creating an order: Direct client creation restricted to admins (standard checkout goes through /api/checkout)
+      allow create: if isAdmin();
         
       // Updating an order: Admin can change status (paid/shipped). Customers can accept finalized quotes.
       allow update: if isAdmin() || (

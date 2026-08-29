@@ -21,7 +21,8 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
     isActualAdmin,
     isAdmin,
     customers,
-    companySettings
+    companySettings,
+    addDeliveryAddress
   } = usePortal();
 
   const [notes, setNotes] = useState("");
@@ -250,7 +251,7 @@ export const CartView: React.FC<CartViewProps> = ({ onOrderCompleted, onNavigate
         const targetId = isAdmin && orderForMode === "registered" ? selectedCustomerId : currentUser?.id;
         if (targetId) {
           // Fire and forget add address
-          usePortal().addDeliveryAddress(targetId, finalAddress).catch(console.error);
+          addDeliveryAddress(targetId, finalAddress).catch(console.error);
         }
       }
 

@@ -40,8 +40,18 @@ interface AdminDashboardProps {
 }
 
 import { AdminAccountingTab } from "./admin/AdminAccountingTab";
+import { SimpleAdminView } from "./admin/SimpleAdminView";
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice }) => {
   const { showToast } = useToast();
+  const [adminMode, setAdminMode] = useState<"simple" | "advanced">(() => {
+    return (localStorage.getItem("desmo_admin_view_mode") as "simple" | "advanced") || "simple";
+  });
+
+  const handleToggleAdminMode = (mode: "simple" | "advanced") => {
+    setAdminMode(mode);
+    localStorage.setItem("desmo_admin_view_mode", mode);
+  };
   const { 
     customers, 
     products, 
@@ -679,8 +689,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onViewInvoice })
     alert("Products patched with default dimensions!");
   };
 
+  if (adminMode === "simple") {
+    return (
+      <SimpleAdminView
+        onViewInvoice={onViewInvoice}
+        onSwitchToAdvanced={() => handleToggleAdminMode("advanced")}
+      />
+    );
+  }
+
   return (
     <div className="space-y-8" id="admin_dashboard_container">
+      {/* Advanced Mode Header Banner */}
+      <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="bg-amber-400 text-slate-950 p-2 rounded-xl font-bold">
+            🛠️
+          </div>
+          <div>
+            <h4 className="font-extrabold text-slate-900 text-base">Advanced Developer Mode Active</h4>
+            <p className="text-xs text-slate-600">Access to all 8 technical sub-tabs & rate break profiles.</p>
+          </div>
+        </div>
+        <button
+          onClick={() => handleToggleAdminMode("simple")}
+          className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-sm py-2.5 px-5 rounded-xl transition shadow"
+        >
+          ☀️ Switch to Simple Mode (Standard)
+        </button>
+      </div>
+
       {/* Segment Selector tabs */}
       <div className="flex items-center gap-2 overflow-x-auto scrollbar-none max-w-full py-1 border-b border-slate-100 pb-4" id="admin_tab_selector">
         {(["accounting", "company", "shipping", "customers", "products", "quotes", "rateBreaks", "warranties"] as const).map((tab) => {
