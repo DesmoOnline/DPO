@@ -4,6 +4,7 @@ import { Order } from "../types";
 import { ArrowLeft, Printer, ShieldCheck, CreditCard, ChevronRight, Truck, FileDown, Mail, Loader2, Check, X, Clock, FileText, ShoppingBag } from "lucide-react";
 import { generateInvoicePDF } from "../utils/pdfGenerator";
 import { useToast } from "./ui/ToastContext";
+import { auth } from "../firebase";
 
 interface InvoiceDetailProps {
   orderId: string;
@@ -123,11 +124,15 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ orderId, onBack, o
       const dataUri = pdf.output("datauristring");
       const pdfBase64 = dataUri.split(",")[1];
 
+      const token = auth?.currentUser ? await auth.currentUser.getIdToken().catch(() => "") : "";
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const response = await fetch("/api/send-invoice-email", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           to: order.customerEmail,
           subject: `${isQuote ? "Quote" : "Invoice"} from ${companySettings.tradingName} - ${order.id}`,

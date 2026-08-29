@@ -219,7 +219,7 @@ function AppContent() {
         }}
       />
 
-      {editingProductId && (
+      {editingProductId && products.find(p => p.id === editingProductId) && (
         <Suspense fallback={null}>
           <EditProductModal 
             product={products.find(p => p.id === editingProductId)!} 

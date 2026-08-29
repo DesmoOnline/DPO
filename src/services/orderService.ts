@@ -1,5 +1,23 @@
 import { Firestore, doc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { Order, OrderItem, DocumentType, Product } from "../types";
+import { auth } from "../firebase";
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  try {
+    if (auth?.currentUser) {
+      const token = await auth.currentUser.getIdToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+  } catch (err) {
+    console.warn("Could not attach auth token:", err);
+  }
+  return headers;
+}
 
 export const orderService = {
   async placeOrder(
@@ -31,9 +49,10 @@ export const orderService = {
       ownTransport
     };
 
+    const headers = await getAuthHeaders();
     const res = await fetch('/api/checkout', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload)
     });
     const data = await res.json();
@@ -119,9 +138,10 @@ export const orderService = {
   },
 
   async addShippingCharge(db: Firestore, orderId: string, shippingCharge: number, creditAdjustment: number = 0): Promise<void> {
+    const headers = await getAuthHeaders();
     const res = await fetch(`/api/orders/${orderId}/shipping`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ shippingCharge, creditAdjustment })
     });
     const data = await res.json();

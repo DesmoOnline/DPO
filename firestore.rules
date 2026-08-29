@@ -39,7 +39,7 @@ service cloud.firestore {
     // 2. Users Collection Rules
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
-      allow list: if isSignedIn();
+      allow list: if isAdmin();
       
       // Creating a profile: Status MUST be pending on self-registration unless admin
       allow create: if isAdmin() || (

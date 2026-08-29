@@ -932,16 +932,10 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         items.push({ id: doc.id, ...doc.data() } as Product);
       });
       
-      const snapshotIds = new Set(items.map(i => i.id));
-      const missingDefaults = DEFAULT_PRODUCTS.filter(d => !snapshotIds.has(d.id));
-      const combined = [...items, ...missingDefaults];
-      setProducts(combined);
-
-      // If admin is logged in and there are missing default products in Firestore, auto-sync them up
-      if (currentUser && (currentUser.email === "lew@desmoproducts.com.au" || currentUser.email === "1@1.com")) {
-        missingDefaults.forEach((prod) => {
-          setDoc(doc(db, "products", prod.id), prod).catch(() => {});
-        });
+      if (items.length > 0) {
+        setProducts(items);
+      } else {
+        setProducts(DEFAULT_PRODUCTS);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, "products");
@@ -1873,9 +1867,13 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
+    const token = auth?.currentUser ? await auth.currentUser.getIdToken().catch(() => "") : "";
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
     const res = await fetch("/api/send-welcome-email", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ to: email, companyName })
     });
     const data = await res.json();
@@ -1885,9 +1883,13 @@ export const PortalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const sendCustomerBroadcastEmail = async (recipients: string[], subject: string, body: string, dealTitle?: string) => {
+    const token = auth?.currentUser ? await auth.currentUser.getIdToken().catch(() => "") : "";
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
     const res = await fetch("/api/send-broadcast-email", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ recipients, subject, body, dealTitle })
     });
     const data = await res.json();

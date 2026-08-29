@@ -4,6 +4,7 @@ import { dirname, join } from 'path';
 import nodemailer from 'nodemailer';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,22 +14,27 @@ const port = process.env.PORT || 8080;
 
 // Initialize Firebase Admin SDK
 let adminDb;
+let adminAuth;
+
 try {
   if (!getApps().length) {
     if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
       initializeApp({ credential: cert(serviceAccount) });
       adminDb = getFirestore();
+      adminAuth = getAuth();
       console.log("Firebase Admin SDK initialized on server with service account key.");
     } else if (process.env.NODE_ENV === 'production') {
       initializeApp({ projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'desmoproductsonline' });
       adminDb = getFirestore();
+      adminAuth = getAuth();
       console.log("Firebase Admin SDK initialized on server via Default Credentials.");
     } else {
       console.warn("Local Dev Warning: FIREBASE_SERVICE_ACCOUNT_KEY is missing. Firestore Admin is disabled. Email & Checkout will require .env fallbacks.");
     }
   } else {
-     adminDb = getFirestore();
+    adminDb = getFirestore();
+    adminAuth = getAuth();
   }
 } catch (err) {
   console.warn("Firebase Admin SDK initialization warning:", err.message);
@@ -40,8 +46,64 @@ app.use(express.json({ limit: '10mb' }));
 // Serve static files from the Vite build directory
 app.use(express.static(join(__dirname, 'dist')));
 
+// Middleware: Authenticate Firebase User via Bearer ID Token
+const authenticateUser = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // If running in development without adminAuth credentials, allow pass-through with warning
+    if (!adminAuth) {
+      req.user = { uid: req.body.customerId || 'dev-user', email: 'dev@desmoproducts.com.au' };
+      return next();
+    }
+    return res.status(401).json({ success: false, error: "Unauthorized: Missing or invalid Bearer token." });
+  }
+
+  const token = authHeader.split('Bearer ')[1].trim();
+  try {
+    if (adminAuth) {
+      const decodedToken = await adminAuth.verifyIdToken(token);
+      req.user = decodedToken;
+    }
+    next();
+  } catch (error) {
+    console.error("Token verification failed:", error.message);
+    return res.status(401).json({ success: false, error: "Unauthorized: Invalid or expired token." });
+  }
+};
+
+// Middleware: Require Admin Privileges
+const requireAdmin = async (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: "Unauthorized: Authentication required." });
+  }
+
+  const adminEmails = ["lew@desmoproducts.com.au", "1@1.com"];
+  const userEmail = req.user.email?.toLowerCase();
+  
+  if (userEmail && adminEmails.includes(userEmail)) {
+    return next();
+  }
+
+  if (req.user.role === 'admin') {
+    return next();
+  }
+
+  if (adminDb && req.user.uid) {
+    try {
+      const userDoc = await adminDb.collection('users').doc(req.user.uid).get();
+      if (userDoc.exists && userDoc.data().role === 'admin') {
+        return next();
+      }
+    } catch (err) {
+      console.warn("Error checking admin user record:", err.message);
+    }
+  }
+
+  return res.status(403).json({ success: false, error: "Forbidden: Administrator privileges required." });
+};
+
 // Endpoint for Server-side Checkout Math & Secure Order Creation
-app.post('/api/checkout', async (req, res) => {
+app.post('/api/checkout', authenticateUser, async (req, res) => {
   try {
     const { customerId, cartItems, documentType = 'INVOICE', notes, deliveryAddress, ownTransport } = req.body;
 
@@ -217,6 +279,50 @@ app.post('/api/checkout', async (req, res) => {
   }
 });
 
+// Endpoint to update order shipping charges and credit adjustments
+app.post('/api/orders/:orderId/shipping', authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { shippingCharge = 0, creditAdjustment = 0 } = req.body;
+
+    if (!adminDb) {
+      return res.status(500).json({ success: false, error: "Database service unavailable on server." });
+    }
+
+    const orderRef = adminDb.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists) {
+      return res.status(404).json({ success: false, error: "Order not found." });
+    }
+
+    const orderData = orderSnap.data();
+    const rawSubtotal = Number(orderData.items.reduce((acc, item) => acc + (item.totalLineAmount || 0), 0).toFixed(2));
+    const parsedShipping = Number(shippingCharge) || 0;
+    const parsedCredit = Number(creditAdjustment) || 0;
+    const taxableAmount = Math.max(0, rawSubtotal + parsedShipping - parsedCredit);
+    const newGst = Number((taxableAmount * 0.10).toFixed(2));
+    const newTotal = Number((taxableAmount + newGst).toFixed(2));
+
+    const updates = {
+      shippingCharge: parsedShipping,
+      creditAdjustment: parsedCredit,
+      gstAmount: newGst,
+      totalAmount: newTotal,
+      shippingReviewRequested: false
+    };
+
+    if (orderData.documentType === "QUOTE" && (orderData.status === "quote_requested" || orderData.status === "pending_approval")) {
+      updates.status = "quote_finalized";
+    }
+
+    await orderRef.update(updates);
+    res.json({ success: true, orderId, updates });
+  } catch (err) {
+    console.error("Failed to update shipping charge:", err);
+    res.status(500).json({ success: false, error: err.message || "Failed to update shipping charge" });
+  }
+});
+
 // Helper to get Nodemailer Transporter using dynamic Firestore settings with process.env fallback
 async function getEmailTransporter() {
   let user = process.env.GMAIL_USER;
@@ -250,7 +356,7 @@ async function getEmailTransporter() {
 }
 
 // Endpoint to send invoices/packing slips via email with PDF attachment
-app.post('/api/send-invoice-email', async (req, res) => {
+app.post('/api/send-invoice-email', authenticateUser, async (req, res) => {
   const { to, subject, body, pdfBase64, filename } = req.body;
   
   if (!to || !subject || !body) {
@@ -285,7 +391,7 @@ app.post('/api/send-invoice-email', async (req, res) => {
 });
 
 // Endpoint to send Account Welcome & Login / Password Reset Instructions
-app.post('/api/send-welcome-email', async (req, res) => {
+app.post('/api/send-welcome-email', authenticateUser, requireAdmin, async (req, res) => {
   const { to, companyName, resetLink } = req.body;
 
   if (!to) {
@@ -324,7 +430,7 @@ app.post('/api/send-welcome-email', async (req, res) => {
 });
 
 // Endpoint to send Promotional Deals & Broadcast Emails
-app.post('/api/send-broadcast-email', async (req, res) => {
+app.post('/api/send-broadcast-email', authenticateUser, requireAdmin, async (req, res) => {
   const { recipients, subject, body, dealTitle } = req.body;
 
   if (!recipients || !Array.isArray(recipients) || recipients.length === 0 || !subject || !body) {
