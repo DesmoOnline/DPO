@@ -28,6 +28,20 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error caught by ErrorBoundary:', error, errorInfo);
+    
+    // Auto-reload if a stale chunk error is detected (due to recent deployment)
+    if (
+      error.message && 
+      (error.message.includes('Failed to fetch dynamically imported module') || 
+       error.message.includes('Importing a module script failed'))
+    ) {
+      if (!sessionStorage.getItem('chunk_reload')) {
+        sessionStorage.setItem('chunk_reload', 'true');
+        window.location.reload();
+      }
+    } else {
+      sessionStorage.removeItem('chunk_reload');
+    }
   }
 
   handleReload = () => {
