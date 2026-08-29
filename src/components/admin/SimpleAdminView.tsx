@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { usePortal } from "../../context/PortalContext";
 import { useToast } from "../ui/ToastContext";
 import { Product, CustomerProfile, Order } from "../../types";
+import { EditProductModal } from "../EditProductModal";
 import { 
   Package, 
   Users, 
@@ -87,6 +88,7 @@ export const SimpleAdminView: React.FC<SimpleAdminViewProps> = ({
   const [quickPriceEditId, setQuickPriceEditId] = useState<string | null>(null);
   const [quickPriceVal, setQuickPriceVal] = useState<string>("");
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [newProdForm, setNewProdForm] = useState({
     name: "",
     sku: "",
@@ -1355,15 +1357,23 @@ Total Invoices in Period:              ${basReport.orderCount}
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => {
-                        setQuickPriceEditId(prod.id);
-                        setQuickPriceVal(prod.baseWholesalePrice.toString());
-                      }}
-                      className="inline-flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-sm py-2.5 px-4 rounded-xl transition shadow-sm"
-                    >
-                      <Pencil className="w-4 h-4" /> Change Price
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setEditingProduct(prod)}
+                        className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm py-2.5 px-3 rounded-xl transition shadow-sm border border-slate-300"
+                      >
+                        <Settings className="w-4 h-4" /> Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          setQuickPriceEditId(prod.id);
+                          setQuickPriceVal(prod.baseWholesalePrice.toString());
+                        }}
+                        className="inline-flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-sm py-2.5 px-4 rounded-xl transition shadow-sm"
+                      >
+                        <Pencil className="w-4 h-4" /> Change Price
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1761,6 +1771,13 @@ Total Invoices in Period:              ${basReport.orderCount}
             </form>
           </div>
         </div>
+      )}
+
+      {editingProduct && (
+        <EditProductModal 
+          product={editingProduct} 
+          onClose={() => setEditingProduct(null)} 
+        />
       )}
 
     </div>
